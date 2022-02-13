@@ -1,0 +1,1998 @@
+/* It calculates Geweke's predictive likelihoods */
+/* Only alpha (a) varies with time */
+
+
+@ Add in the variance decompositions at each t @
+@ Change the data set to the 'wealth' data for the JMCB @
+@ Add in a plot of the distances of the space from spaces defined by co-ordinate axes@
+@ dmix2.txt modified to estimate tvp-vecm@
+@dk1.prg modified to make it Primiceri's@
+@now modify dk5.prg the program which does Primiceri's TVP-VAR model to add dynamic mixture@
+@treatment of initial conditions as described in paper@
+@dk4.prg but putting in the training sample type prior@
+@now experiment with treatment of initial conditions@
+@now extend dk2b.prg to dk3.prg which will have changes in error covariance in same form as Primiceri@
+@eventually this program will involve a K1 to model breaks in coefficients and K2 to model breaks in error variances, but right now only K1 part@
+@modify dk2.prg to use real data and a time-varying VAR setup (although still with constant variances@
+@modify dk2.prg to treat error covariances in measurement and state equations as unknown parameters@
+@modify dk1.prg so that Rt handles the dynamic mixture stuff and Qt the constant over time part error variance in state equation and let Ht vary over time@
+@modify dk.prg to make the procedure a subroutine and then call it in a MCMC loop to test@
+/**the program does and tests the Durbin-Koopman algorithm*/ 
+/*notation as in the DK paper, but we use the restricted version with Qt=constant over time and Tt=I */
+/*one little funny thing -- r runs from 0 to n in DK, change this to 1 to t+1 in code -- so be careful */
+new;
+library pgraph;
+Offsetc=1;
+truncbelow=0.999;
+everyk=1;      /* Get only one every 'everyk' iterations */
+constante=1;   /* it is 0 if there is no constant in the model */
+timrun=hsec;  nrep=7000;  nburn=1000;
+/* p is the dimensionality of y*/
+p = 2;
+/* plag is number of lags in the VAR*/
+plag= 2;
+/* rnk is the cointegrating rank */
+rnk = 1; pr = p*rnk;
+/* rhob_0 is the rho in the state equation for the coint vectors.
+   This is the initial value only if it is drawn later.
+   Otherwise rho is fixed to this value */
+do while rnk<=p;
+pr = p*rnk;
+/* m is the number of elements in the state vector*/
+m= p*constante + p*rnk + (plag-1)*p^2;
+/* taub is the degree of dispersion in the prior*/
+taub=.05;
+/* smplr 1 - original SS model sampler; 0 - new sampler */
+smplr = 01;
+testgew1={};
+testgew2={};
+testgew3={};
+testgew4={};
+testgew5={};
+testgew6={};
+testgew7={};
+testgew8={};
+testgew9={};
+
+keeprho={};
+/*
+if rnk == 1;b_0draw =190.4564|345.45948|351.80678;b_0draw=b_0draw/sqrt(b_0draw'b_0draw)*0;
+else;       b_0draw=rndn(p*rnk,1);
+endif;
+*/
+wex=0;  /* wex=0 Weak exogeneity is not imposed, wex=1 Weak exogeneity is imposed */
+if wex;
+ if     rnk == 1;  m1=2;  sr=seqa(1,1,3)|seqa(4+m1,1,m-m1-3);
+ elseif rnk == 2;  m1=2;  sr=seqa(1,1,3)|5|6|seqa(8,1,m-m1-5);
+ endif;
+else;   m1=0; sr=seqa(1,1,m);
+endif;
+
+
+if m > 5;  R1 = zeros(pr,3)~eye(pr)~zeros(pr,m-pr-plag); R1=R1';
+else;    R1 = zeros(1,3)~1; R1=R1';
+endif;
+
+/*
+t=215;
+load rawdat[t,4]=var.dat;
+print " VAR data: date, unemployment rate, interest rate and inflation rate ";
+print " Re-ordered to : date, inflation rate, unemployment rate and interest rate ";
+if constante;
+rawdat=rawdat[.,1]~rawdat[.,4]~rawdat[.,2]~rawdat[.,3];
+else;
+rawdat=rawdat[.,4]~rawdat[.,2]~rawdat[.,3];
+endif;
+t=217;
+load rawdat[t,4]=cya_date.txt;
+if constante;
+rawdat=rawdat[.,1]~rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+else;
+rawdat=rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+endif;
+
+t=614;
+load rawdat[t,4]=Tbills.txt;
+if constante;
+rawdat=rawdat[.,1]~rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+else;
+rawdat=rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+endif;*/
+
+t=210;
+load rawdat[t,3]=uk_Fisher.txt;
+if constante;
+rawdat=rawdat[.,1]~rawdat[.,2]~rawdat[.,3];
+else;
+rawdat=rawdat[.,2]~rawdat[.,3];
+endif;
+
+/*t=210;
+load rawdat[t,4]=data_uk.txt;
+if constante;
+rawdat=rawdat[.,1]~rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+else;
+rawdat=rawdat[.,2]~rawdat[.,3]~rawdat[.,4];
+endif;*/
+
+realbeta=(1|-1|1);
+realbeta=realbeta./sqrt(realbeta'*realbeta);
+/*t=10;
+print " Simulated data with no break at t=125 - T = 250 ";
+sigxx=(2~0)|(0~2);
+sigyy=1;
+x=rndn(t,p-1)*chol(sigxx); x=cumsumc(x);
+y=zeros(t,1);
+pepote=2;
+boss=0;
+rhosim=0.3;
+do while pepote<=t+50;
+boss=boss|(boss[pepote-1]*rhosim+sqrt(sigyy)*rndn(1,1));
+pepote=pepote+1;
+endo;
+y=0.5*(x[.,1]-x[.,2])+boss[50+1:50+t];
+if constante;
+rawdat=seqa(1,1,t)~y~x;
+else;
+rawdat=y~x;
+endif;
+aux1=(1~0.5~(-0.5))|(0~1~0)|(0~0~1);
+thesigma=(sigyy~0~0)|((0|0)~sigxx);
+thesigma=aux1*thesigma*aux1';
+*/
+
+if wex;
+else;
+endif;
+@tau is size of training sample@
+tau=0;
+erhob=0; /* Posterior mean of first order autocorrelation coefficient for cointegrating coefficients. */
+rhob=0.999;   /* first order autocorrelation coefficient for cointegrating coefficients. */
+rhoa=1; /* first order autocorrelation coefficient for lag coefficients. */
+rhoat=1; /* first order autocorrelation coefficient for covariance coefficients. */
+rhoh=1; /* first order autocorrelation coefficient for variances. */
+bigR=eye(p*p)~eye(p*p);
+@ bigR is used to convert VAR parameters to VECM pie matrix - for use when estimating a VAR. NB: in this case set all betas to eye(p) @
+rawdat0=rawdat[tau+1:t,.];
+
+yall=zeros(p,t-tau-plag);
+for i (1,p,1);
+yall[i,.]=rawdat0[tau+plag+1:t,i+constante]'-rawdat0[tau+plag:t-1,i+constante]';
+endfor;
+
+{eigbv,btemp}=eighv(yall*yall'/t);btemp=btemp[.,1:rnk];
+Zall={};ylagall={};
+t=rows(rawdat);
+Zball=zeros(t*p,p*rnk);
+for i (tau+plag+1,t,1);
+if constante;
+ztempall=eye(p);
+else;
+ztempall={};
+endif;
+j=1; do while j<=plag;
+if j == 1;
+ xlagall = rawdat[i-j,1+constante:p+constante]*btemp;
+ ylagall = ylagall|rawdat[i-j,1+constante:p+constante];
+ ztempall = ztempall~(eye(p).*.xlagall);
+else;
+ xlagall = rawdat[i-j+1,1+constante:p+constante]-rawdat[i-j,1+constante:p+constante];
+ ztempall = ztempall~(eye(p).*.xlagall);
+endif;
+
+j=j+1; endo;
+Zall = Zall|ztempall;
+endfor;
+gewekeS=1;      @ The number of observations for which a predictive likelihood is calculated @
+geweket0=100;     @ Initial number of observations to be used @
+
+partition=1;
+rawdat=rawdat0[1:geweket0+(partition-1)*gewekeS,.];
+t=rows(rawdat);
+
+bayes={};
+
+first=1;
+do while t<rows(rawdat0);           @ GEWEKE DO @
+y=zeros(p,t-tau-plag);
+for i (1,p,1);
+y[i,.]=rawdat[tau+plag+1:t,i+constante]'-rawdat[tau+plag:t-1,i+constante]';
+endfor;
+
+Z={};ylag={};
+Zb=zeros(t*p,p*rnk);
+for i (tau+plag+1,t,1);
+if constante;
+ztemp=eye(p);
+else;
+ztemp={};
+endif;
+j=1; do while j<=plag;
+if j == 1;
+ xlag = rawdat[i-j,1+constante:p+constante]*btemp;
+ ylag = ylag|rawdat[i-j,1+constante:p+constante];
+ ztemp = ztemp~(eye(p).*.xlag);
+else;
+ xlag = rawdat[i-j+1,1+constante:p+constante]-rawdat[i-j,1+constante:p+constante];
+ ztemp = ztemp~(eye(p).*.xlag);
+endif;
+
+j=j+1; endo;
+Z = Z|ztemp;
+endfor;
+
+t=cols(y);
+
+
+
+@to set up training sample prior a la primiceri, use the following subroutine@
+@{aols,vols,a0,ssig1,vaols,bols}=ts_prior(rawdat,tau,p,plag,eye(p),rnk);@
+@prior for transition probs@
+@add an extra K for the cointegrating matrix@
+ap_0=.05*ones(4,1);
+bp_0=ones(4,1);
+@implied prior "sample size" for state equations@
+t_0 = (ap_0./(ap_0 + bp_0))*t;
+@Prior for error precisions matrices are Wishart using notation/parameterizations from my textbook@
+@Prior for Q^-1@
+
+
+/****** A BIT OF RODNEY'S ADDITION TO THE CODE  - This addition is for computing the SDDR for each t *****************************************/
+projrows=seqa(0,p,t);
+proj=zeros(p*t,p);
+/***************************************************************************************/
+/****** A BIT OF RODNEY'S ADDITION TO THE CODE *****************************************/
+/***************************************************************************************/
+/*
+p0=zeros(t,1);
+for j (1,nrep,1);
+ Qinvdraw = wish(Qinv_0,Qinv_dof);Qinvdraw = invpd(Qinvdraw);
+ Qi1 = R1'Qinvdraw*R1;
+ for i (1,t,1);
+  p0i= calc_GCSDDR(R1'aols,i*Qi1);
+  p0[i] = ln(exp(p0[i])+exp(p0i-ln(nrep)));
+ endfor;
+@if j == nburn+1;  ep02 = (ep02 - ep0^2); endif;@
+endfor;
+*/
+/***************************************************************************************/
+/****** END : A BIT OF RODNEY'S ADDITION TO THE CODE   - This addition is for computing the SDDR for each t *****************************************/
+/***************************************************************************************/
+
+
+@Initialise the histograms of the angles in the cointegrating space@
+@ To begin with, we only record the means@
+q1histo=zeros(t,100);
+q2histo=zeros(t,100);
+meanangle=0;
+
+@Initialise the histograms for the temporary proportion of wealth@
+tphisto=zeros(t,100);
+
+@Initialise the histograms for the volatilities@
+ihisto=zeros(t,100);uhisto=zeros(t,100);rhisto=zeros(t,100);
+
+iv=seqa(0,.7/100,100);
+iv=iv~seqa(0,.7/100,100);
+iv=iv~seqa(0,6/100,100);
+iv=iv~seqa(0,1/100,100);
+iv=iv~seqa(0,1/100,100);
+iv=iv~seqa(0,1/100,100);  step=iv[2,.]-iv[1,.];  iv=iv';
+
+@following is desired prior mean for error cov@
+Q_0=eye(m)*0.0001;
+Qinv_dof=m+2;    @Degrees of freedom@
+@Prior for C^-1   - relating to state equation for covariances@
+@following is desired prior mean for error cov@
+numa=p*(p-1)/2;
+Cinv_dof = numa+2;  @Degrees of freedom@
+C_0 = eye(numa)*0.0001;
+@Prior for W^-1   - relating to state equation for stoch volatility@
+@following is desired prior mean for error cov@
+W_0=eye(p)*0.0001;
+Winv_dof=p+2;       @Degrees of freedom@
+@Prior for initial condition for VAR coeffs is Normal@
+a_0 = zeros(m,1);
+b_0 = zeros(pr,1);
+factorA=2;
+Va_0 = eye(m)*factorA;
+Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p]= (1-rhob^2)*Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p];
+Va_0inv=invpd(Va_0);
+
+
+Vb_0 = eye(pr)*(1/(1-rhob^2));
+Vb_0inv=invpd(Vb_0);
+@Prior for initial condition for autocovariance terms is Normal@
+aa_0 = zeros(numa,1);
+Vaa_0=eye(numa)*2;
+Vaa_0inv=invpd(Vaa_0);
+@Prior for initial condition for log stochastic volatility terms is Normal@
+hh_0 = zeros(p,1);
+Vhh_0=eye(p)*2;
+Vhh_0inv=invpd(Vhh_0);
+
+/*specify covariance matrices for measurement and state equations*/
+Htemp= .01*eye(p);
+Hchol=chol(Htemp)';
+
+
+Qbdraw=0.001*eye(p*rnk);
+Qdraw=eye(m)*0.01;
+Qchol=chol(Qdraw);
+Htchol={};
+Ht={};
+Htsd={};
+capRt={};
+capRth={};
+Rtemp=eye(m);
+
+capRt=ones(t,1).*.Rtemp;
+capRth=ones(t,1).*.eye(p);
+Ht=ones(t,1).*.Htemp;
+iHt=ones(t,1).*.invpd(Htemp);
+Htchol=ones(t,1).*.Hchol;
+Htsd=ones(t,1).*.Hchol;
+
+numa=p*(p-1)/2;
+Cdraw=.0001*eye(numa);
+Cchol=chol(Cdraw);
+Wdraw=.0001*eye(numa);
+Zc=zeros(t*p,numa);
+
+sigt=ones(t,1).*.(.01*eye(p));
+sigt2=sigt;
+sigt2chol=sigt*100/.01;
+capRtc=ones(t,1).*.eye(numa);
+
+@INITIAL VALUES@
+if first;
+@ Draw from the prior directly for the initial values @
+@Draw Initial values@
+bdraw=chol(Vb_0)'*rndn(pr,1)+b_0;
+adraw=chol(Va_0)'*rndn(m,1)+a_0;
+atdraw=chol(Vaa_0)'*rndn(numa,1)+aa_0;
+sigtdraw=chol(Vhh_0)'*rndn(p,1)+hh_0;
+h0draw=sigtdraw;
+Qbt=eye(pr);
+
+Qinv_1=inv(0 + Q_0);
+Qinvdraw = wish(Qinv_1,Qinv_dof);
+Qdraw=inv(Qinvdraw);
+Qchol=raiz(Qdraw);
+
+Cinv_1=invpd(0 + C_0);
+Cinvdraw = wish(Cinv_1,Cinv_dof);
+Cdraw=invpd(Cinvdraw);
+Cchol=chol(Cdraw);
+
+Winv_1=invpd(0 + W_0); 
+Winvdraw = wish(Winv_1,Winv_dof);
+Wdraw=invpd(Winvdraw);
+
+GewekeHere=t;
+adrawout=Qchol'*rndn(rows(adraw),GewekeHere);
+sigtdrawout=0*chol(Wdraw)'*rndn(rows(sigtdraw),GewekeHere);
+atdrawout=0*Cchol'*rndn(rows(atdraw),GewekeHere);
+
+bdrawout=bdraw.*.ones(1,t+1);
+
+adrawout=adraw~adrawout;
+adrawout=cumsumc(adrawout')';
+
+sigtdrawout=sigtdraw~sigtdrawout;
+sigtdrawout=cumsumc(sigtdrawout');  @ This is not transposed @
+
+atdrawout=atdraw~atdrawout;
+atdrawout=cumsumc(atdrawout')';
+
+capAtout=zeros(p*GewekeHere,p);
+for i (1,GewekeHere,1);
+capatemp = eye(p);
+aatemp=atdrawout[.,i+1];
+
+ic=1;
+for j (2,p,1);
+capatemp[j,1:j-1] = aatemp[ic:ic+j-2,1]';
+ic=ic+j-1;
+endfor;
+capAtout[(i-1)*p+1:i*p,.]=capatemp;
+endfor;
+
+sigtout=zeros(p*GewekeHere,p);
+for i (1,GewekeHere,1);
+for j (1,p,1);
+ sigtout[(i-1)*p+j,j]=exp(.5*sigtdrawout[i+1,j]);
+endfor;
+endfor;
+
+iHtout=zeros(p*GewekeHere,p);
+Htout=zeros(p*GewekeHere,p);
+Htcholout=zeros(p*GewekeHere,p);
+
+for i (1,GewekeHere,1);
+basto=capAtout[(i-1)*p+1:i*p,.];
+inva=inv(basto);
+stem = sigtout[(i-1)*p+1:i*p,.];
+istem=diagrv(eye(p),1./diag(stem));
+iHtout[(i-1)*p+1:i*p,.]=basto'*istem*istem*basto;
+Htout[(i-1)*p+1:i*p,.]=inva*stem*stem*inva';
+{uv,sv,vv}=svd1(Htout[(i-1)*p+1:i*p,.]);
+Htcholout[(i-1)*p+1:i*p,.]=(uv*sqrt(sv)*vv');
+endfor;
+
+Htchol=Htcholout;
+Ht=Htout;
+iHt=iHtout;
+for i (1,GewekeHere,1);
+ bdrawi=reshape(bdrawout[.,i+1],p, rnk);   /* Transpose Story */
+if constante; 
+Z[(i-1)*p+1:i*p, (p+1):pr+p] = eye(p).*.(ylag[i,.]*bdrawi);
+else;
+Z[(i-1)*p+1:i*p, 1:pr] = eye(p).*.(ylag[i,.]*bdrawi);
+endif;
+endfor;
+
+adraw=adrawout;
+adraw1=adrawout[.,2:cols(adrawout)]-adrawout[.,1:cols(adrawout)-1];
+adraw1=zeros(m,1)~adraw1;
+bdraw=bdrawout;
+atdraw=atdrawout;
+atdraw1=atdrawout[.,2:cols(atdrawout)]-atdrawout[.,1:cols(atdrawout)-1];
+atdraw1=zeros(rows(atdraw1),1)~atdraw1;
+sigtdraw=sigtdrawout;
+sigtdra1=sigtdrawout[2:rows(sigtdrawout),.]-sigtdrawout[1:rows(sigtdrawout)-1,.];
+sigtdra1=zeros(1,p)|sigtdra1;
+sdraw=5*ones(t,p);
+elseif first==0;
+tontofuera=minc(gewekeS|(cols(yall)-cols(atdraw1)));
+atdraw1=atdraw1~(atdraw1[.,cols(atdraw1)].*.ones(1,tontofuera)*0);
+adraw1=adraw1~(adraw1[.,cols(adraw1)].*.ones(1,tontofuera)*0);
+bdraw1=bdraw1~(bdraw1[.,cols(bdraw1)].*.ones(1,tontofuera)*0);
+bdraw=bdraw~(bdraw[.,cols(bdraw)].*.ones(1,tontofuera));
+capAt=capAt|(capAt[rows(capAt)-p+1:rows(capAt),.]);
+atdraw=atdraw~(atdraw[.,cols(atdraw)].*.ones(1,tontofuera)*0);
+sigtdra1=sigtdra1|(ones(tontofuera,1).*.sigtdra1[rows(sigtdra1),.])*0;
+sigtdraw=sigtdraw|(ones(tontofuera,1).*.sigtdraw[rows(sigtdraw),.]);
+sdraw=sdraw|(ones(tontofuera,1).*.sdraw[rows(sdraw),.]);
+nburn=100;
+endif;
+
+@Loop begins@
+bdrrr={};
+bd2={};
+ntot=nrep+nburn; totrep=0;
+logpredjun={};
+for irep (1,ntot,1);
+totrep=totrep+1;
+
+@Draw initial condition for alpha@
+
+/*********************************************/
+/**** begin making adjustments for weak ******/
+/**** exogeneity ****************************/
+/*********************************************/
+vbar = zeros(m-m1,m-m1);
+xhy = zeros(m-m1,1);
+
+adraw1=adraw1[sr,.];
+for i (1,t,1);
+zhat1=Z[(i-1)*p+1:i*p,sr];
+yhat1 = y[.,i] - zhat1*adraw1[.,i+1];   @(i+1)@
+
+HHat1=iHt[(i-1)*p+1:i*p,.];
+vbar = vbar + zhat1'HHat1*zhat1;
+xhy=xhy + zhat1'HHat1*yhat1;
+endfor;
+
+Va_0 = eye(m)*factorA;
+Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p]= (1-rhob^2)*Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p];
+Va_0inv=invpd(Va_0);
+vbar=inv(vbar+Va_0inv[sr,sr]);
+a0hat = vbar*(va_0inv[sr,sr]*a_0[sr]+xhy);
+a0draw = a0hat + raiz(vbar)*rndn(m-m1,1);
+
+ya=reshape(vec(y)-Z[.,sr]*a0draw,t,p)';
+kdrawa=ones(t,1);
+
+capRt=ones(t,1).*.eye(m-m1);
+
+{adraw1,ahat,Vadraw} = dk(ya,p,m-m1,t,Qchol[sr,sr],Ht,Htchol,Qdraw[sr,sr],Z[.,sr],capRt,rhoa,zeros(m,1),Qdraw[sr,sr]);
+@ The last two arguments of the dk are: mean and variance of the initial condition @
+
+adraw1=zeros(m,1)~adraw1;
+/*descansar=ones(t,t);
+zchome=zeros(t*p,t*p);
+for domingo(1,t,1);
+descansar[domingo,domingo:t]=domingo*descansar[domingo,domingo:t];
+descansar[domingo:t, domingo]=descansar[domingo,domingo:t]';
+zchome[(domingo-1)*p+1:domingo*p,(domingo-1)*p+1:domingo*p]=z[(domingo-1)*p+1:domingo*p,.];
+endfor;
+descansar=descansar.*.Qdraw;
+deverdad=eye(t).*.invpd(thesigma);
+barco=invpd(invpd(descansar)+zchome'deverdad*zchome);
+media=barco*zchome'*deverdad*vec(ya);
+adraw1=chol(barco)'*rndn(t*p,1)+media;
+adraw1=reshape(adraw1,t,p)';
+adraw1=zeros(3,1)~adraw1;*/
+
+@add on the initial condition@
+adraw =adraw1 + a0draw;
+
+vbbar = zeros(pr,pr);
+xbhy=zeros(pr,1);
+yb=y*0;
+Zb=Zb*0;bdrawi=bdraw[.,1];
+for i (1,t,1);
+adrawi=reshape(adraw[(p*constante+1):(pr+p*constante),i+1],p,rnk);  @(i+1)@  /* Transpose story */
+zbhat1=(ylag[i,.].*.adrawi);
+
+Zb[((i-1)*p+1):(i*p),.]=zbhat1;
+if plag>1;
+if constante;
+yb[.,i]= y[.,i] - Z[(i-1)*p+1:i*p, 1:p (pr+p+1):(pr+(p*((plag-1)*p+1)))]*adraw[1:p (pr+p+1):(pr+(p*((plag-1)*p+1))),i+1];  @(i+1)@
+else;
+yb[.,i]= y[.,i] - Z[(i-1)*p+1:i*p, (pr+1):(pr+(p*(plag-1)*p))]*adraw[(pr+1):(pr+((plag-1)*p*p)),i+1];  @(i+1)@
+endif;
+elseif plag==1;
+if constante;
+yb[.,i]= y[.,i] - Z[(i-1)*p+1:i*p, 1:p]*adraw[1:p,i+1];  @(i+1)@
+else;
+yb[.,i]= y[.,i] - 0;
+endif;
+endif;
+endfor;
+
+Vb_0 = eye(pr)*(1/(1-rhob^2));
+Vb_0inv=(1-rhob^2)*eye(pr);
+
+/*for i (1,t,1);
+ybb[.,i] = yb[.,i] - Zb[(i-1)*p+1:i*p,.]*b0draw;
+endfor;*/
+ybb=yb;
+@draw K1 here and it gets fed in via capRt@
+kdrawb=ones(t,1);
+Qbt={};
+capRt=ones(t,1).*.eye(pr);
+
+Qbt = eye(pr);
+{bdraw1,bhat,Vbdraw} = dk(ybb,p,pr,t,0*chol(Qbt),Ht,Htchol,0*Qbt,Zb,capRt,rhob/rhob,zeros(pr,1),Vb_0);
+
+@ The last two arguments of the dk are the mean and variance of the initial condition @
+bdraw=zeros(pr,1)~bdraw1;
+@add on the initial condition@
+
+Va_0 = eye(m)*factorA;
+Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p]= (1-rhob^2)*Va_0[constante*p+1:pr+constante*p,constante*p+1:pr+constante*p];
+Va_0inv=invpd(Va_0);
+Vb_0 = eye(pr)*(1/(1-rhob^2));
+Vb_0inv=invpd(Vb_0);
+
+/*
+truncation=0;
+if abs((1-rhat)/rvhat)>18;
+candidate=drawtruncated(1,rhat,rvhat);
+else;
+u=cdfn((truncation-rhat)/rvhat)+(cdfn((1-rhat)/rvhat)-cdfn((truncation-rhat)/rvhat))*rndu(1,1);
+candidate = rhat + rvhat*cdfni(u);
+endif;
+@truco=candidate<1;
+if truco;
+rhob=candidate;
+else;
+rhob=(1-1/exp(35));
+endif;
+if (1-truco);
+print "con truco";
+endif;
+rhob;@
+Va_0can = (1-candidate^2)*eye(m);
+bayes=-1/2*adraw[.,1]'*invpd(Va_0can)*adraw[.,1]+1/2*adraw[.,1]'*invpd(Va_0)*adraw[.,1];
+@ Metropolis step to account for the initial condition of beta, which depends on rho @
+u=rndu(1,1);
+if ln(u)<bayes;
+rhob=candidate;
+else;
+rhob=candidate;
+endif;
+*/
+
+for i (1,t,1);
+ bdrawi=reshape(bdraw[.,i+1],p,rnk);  @(i+1)@ /* Transpose story */
+if constante; 
+Z[(i-1)*p+1:i*p, (p+1):pr+p] = eye(p).*.(ylag[i,.]*bdrawi);
+else;
+Z[(i-1)*p+1:i*p, 1:pr] = eye(p).*.(ylag[i,.]*bdrawi);
+endif;
+endfor;
+
+atemp = adraw[.,2:t+1]' - adraw[.,1:t]';
+@This is the draw for the state eq error cov for shifts in coefficients @
+
+sse2 = atemp'atemp;
+
+Qinv_1=inv(sse2 + Q_0);
+Qdof=Qinv_dof + t;
+Qinvdraw = wish(Qinv_1,Qdof);
+Qdraw=inv(Qinvdraw);
+
+@Qdraw=Efdrawiwish2(Qinv_dof + t, sse2 + Q_0);
+Qdraw=EfdrawIwish(Qdof, sse2 + Q_0);@
+Qchol=raiz(Qdraw);
+
+@ Calculations for stochastic volatility start here @
+
+yhat = zeros(p,t);
+for i (1,t,1);
+yhat[.,i] = y[.,i] - Z[(i-1)*p+1:i*p,.]*adraw[.,i+1];  @(i+1)@
+endfor;
+
+Ctemp=zeros(p,numa);
+
+sigt2=sigt2*0;
+
+sigt2chol=sigt2chol*0;
+for i (1,t,1);
+ic=1;
+ for j (2,p,1);
+  Ctemp[j,ic-j+2:ic] = - yhat[1:j-1,i]';
+
+ ic = ic+j;
+ endfor;
+
+Zc[(i-1)*p+1:i*p,.]=Ctemp;
+sigt2[(i-1)*p+1:i*p,.]=sigt[(i-1)*p+1:i*p,.]^2;
+sigt2chol[(i-1)*p+1:i*p,.]=sigt[(i-1)*p+1:i*p,.];
+endfor;
+@Draw initial condition for error covariances@
+
+vbar = zeros(numa,numa);
+xhy=zeros(numa,1);
+
+for i (1,t,1);
+zhat1=Zc[(i-1)*p+1:i*p,.];
+yhat1 = yhat[.,i] - zhat1*atdraw1[.,i+1];      @(i+1)@
+
+stem = sigt2[(i-1)*p+1:i*p,.];
+istem=diagrv(eye(p),1./diag(stem));
+
+HHat1=istem;
+vbar = vbar + zhat1'HHat1*zhat1;
+xhy=xhy + zhat1'HHat1*yhat1;
+endfor;
+
+vbar=inv(Vaa_0inv+vbar);
+a0hat = vbar*(Vaa_0inv*aa_0+xhy);
+
+{uv,sv,vv}=svd1(vbar);
+aa0draw = a0hat + uv*sqrt(sv)*vv'rndn(numa,1);
+
+yhata= zeros(p,t);
+for i (1,t,1);
+yhata[.,i] = yhat[.,i] - Zc[(i-1)*p+1:i*p,.]*aa0draw;
+endfor;
+
+@draw K3 here and feed it in through capRtc@
+kdrawa=ones(t,1);
+
+capRtc=kdrawa.*.eye(numa);
+
+/*{atdraw1,athat,Vatdraw} = dk(yhata,p,numa,t,Cchol,sigt2,sigt2chol,Cdraw,Zc,capRtc,rhoat,zeros(numa,1),Cdraw);*/
+atdraw1=0*atdraw1;
+@add on the initial condition@
+atdraw =atdraw1 + aa0draw;
+
+
+capAt=zeros(p*t,p);
+
+for i (1,t,1);
+capatemp = eye(p);
+aatemp=atdraw[.,i+1];    @(i+1)@
+
+ic=1;
+for j (2,p,1);
+capatemp[j,1:j-1] = aatemp[ic:ic+j-2,1]';
+ic=ic+j-1;
+endfor;
+
+capAt[(i-1)*p+1:i*p,.]=capatemp;
+
+endfor;
+
+y2a=zeros(p,t);
+for i (1,t,1);
+ytemps = capAt[(i-1)*p+1:i*p,.]*yhat[.,i];
+y2a[.,i] = (ytemps.^2);
+endfor;
+
+kdrawa=ones(t,1);
+capRth=kdrawa.*.eye(p);
+
+{h0draw, sdraw}=drawinlogsig(sigtdra1,sdraw, y2a',t,capRth, Wdraw, sdraw, rhoh, ones(rows(hh_0),1)*2*ln(OffsetC), Vhh_0, h0draw);
+/*{sigtdra1,sdraw} = ksc1(y2a',t,capRth,Wdraw,sdraw,h0draw,rhoh);*/
+sigtdra1=sigtdra1*0;
+@add on the initial condition@
+
+sigtdraw =sigtdra1 + h0draw';
+sigtdraw=sigtdraw-2*ln(offsetC);
+
+sigt=0*sigt;
+
+for i (1,t,1);
+for j (1,p,1);
+sigt[(i-1)*p+j,j]=exp(.5*sigtdraw[i+1,j]);    @i+1@
+endfor;
+endfor;
+
+
+iHt=iHt*0;
+for i (1,t,1);
+basto=capAt[(i-1)*p+1:i*p,.];
+inva = inv(basto);
+stem = sigt[(i-1)*p+1:i*p,.];
+
+istem=diagrv(eye(p),1./diag(stem));
+Ht[(i-1)*p+1:i*p,.]=inva*stem*stem*inva';
+iHt[(i-1)*p+1:i*p,.]=basto'*istem*istem*basto;
+
+{uv,sv,vv}=svd1(Ht[(i-1)*p+1:i*p,.]);
+Htchol[(i-1)*p+1:i*p,.]=(uv*sqrt(sv)*vv');
+endfor;
+
+for i (1,t,1);
+ bdrawi=reshape(bdraw[.,i+1],p, rnk);   /* Transpose Story */
+if constante;
+Z[(i-1)*p+1:i*p, (p+1):pr+p] = eye(p).*.(ylag[i,.]*bdrawi);
+else;
+Z[(i-1)*p+1:i*p, 1:pr] = eye(p).*.(ylag[i,.]*bdrawi);
+endif;
+endfor;
+
+if irep>nburn;
+@ Calculations for the predictive likelihoods @
+GewekeHere=minc(GewekeS|cols(yall)-t);
+adrawout=Qchol'*rndn(rows(adraw),GewekeHere);
+sigtdrawout=0*rndn(cols(sigtdraw),GewekeHere);
+atdrawout=0*rndn(rows(atdraw),GewekeHere);
+
+bdrawout=bdraw[.,t+1].*.ones(1,t+1);
+
+adrawout[.,1]=adrawout[.,1]+adraw[.,t+1];
+adrawout=cumsumc(adrawout')';
+
+sigtdrawout[.,1]=sigtdrawout[.,1]+sigtdraw[t+1,.]';
+sigtdrawout=cumsumc(sigtdrawout');  @ This is not transposed @
+
+atdrawout[.,1]=atdrawout[.,1]+atdraw[.,t+1];
+atdrawout=cumsumc(atdrawout')';
+
+capAtout=zeros(p*GewekeHere,p);
+for i (1,GewekeHere,1);
+capatemp = eye(p);
+aatemp=atdrawout[.,i];
+
+ic=1;
+for j (2,p,1);
+capatemp[j,1:j-1] = aatemp[ic:ic+j-2,1]';
+ic=ic+j-1;
+endfor;
+capAtout[(i-1)*p+1:i*p,.]=capatemp;
+endfor;
+
+sigtout=zeros(p*GewekeHere,p);
+for i (1,GewekeHere,1);
+for j (1,p,1);
+ sigtout[(i-1)*p+j,j]=exp(.5*sigtdrawout[i,j]);
+endfor;
+endfor;
+
+iHtout=zeros(p*GewekeHere,p);
+Htout=zeros(p*GewekeHere,p);
+Htcholout=zeros(p*GewekeHere,p);
+logdeters=zeros(GewekeHere,1);
+
+for i (1,GewekeHere,1);
+basto=capAtout[(i-1)*p+1:i*p,.];
+inva=inv(basto);
+stem = sigtout[(i-1)*p+1:i*p,.];
+istem=diagrv(eye(p),1./diag(stem));
+iHtout[(i-1)*p+1:i*p,.]=basto'*istem*istem*basto;
+@iHtout[(i-1)*p+1:i*p,.]=invpd(inva*stem*stem*inva');@
+Htout[(i-1)*p+1:i*p,.]=inva*stem*stem*inva';
+@{uv,sv,vv}=svd1(Htout[(i-1)*p+1:i*p,.]);
+Htcholout[(i-1)*p+1:i*p,.]=(uv*sqrt(sv)*vv');@
+logdeters[i]=-2*ln(det(basto))+2*sumc(ln(diag(stem)));
+endfor;
+
+yout=yall[.,t+1:t+gewekeHere];
+Zout=Zall[t*p+1:(t+gewekeHere)*p,.];
+
+for i (1,GewekeHere,1);
+ bdrawi=reshape(bdrawout[.,i],p, rnk);   /* Transpose Story */
+if constante; 
+Zout[(i-1)*p+1:i*p, (p+1):pr+p] = eye(p).*.(ylagall[t+i,.]*bdrawi);
+else;
+Zout[(i-1)*p+1:i*p, 1:pr] = eye(p).*.(ylagall[t+i,.]*bdrawi);
+endif;
+endfor;
+
+logpred=0;
+for i (1,GewekeHere,1);
+adrawi=reshape(adrawout[(p*constante+1):(pr+p*constante),i],p,rnk); /* Transpose story */;
+logpred=-1/2*(yout[.,i]-Zout[(i-1)*p+1:i*p,.]*adrawout[.,i])'*ihtout[(i-1)*p+1:i*p,.]*(yout[.,i]-Zout[(i-1)*p+1:i*p,.]*adrawout[.,i])+logpred;
+logpred=logpred-1/2*logdeters[i]-p/2*ln(2*pi);
+endfor;
+logpredjun=logpredjun|logpred;
+endif;
+endfor;
+
+efe=efsample2(exp(logpredjun));
+vari=vcx(exp(logpredjun))/rows(logpredjun)/efe;
+trasto=meanc(exp(logpredjun));
+
+gentilicio=minc(geweket0+gewekeS*partition|rows(rawdat0));
+rawdat=rawdat0[1:gentilicio,.];
+partition=partition+1;
+trasto=meanc(exp(logpredjun));
+bayes=bayes|(ln(abs(trasto))~sqrt(vari)/trasto);
+@save bayes;@
+t=rows(rawdat);
+first=1;
+endo;     @ GEWEKE DO @
+
+"rank";;rnk;
+sumc(bayes[.,1])~sqrt(sumc(bayes[.,2]^2));
+rnk=rnk+1;
+endo;
+
+
+
+ttorun=(hsec-timrun)/6000;
+
+"time to run in minutes  "  ttorun;;" Number of iterations ";; nrep;
+
+
+
+proc(1)=drawrhob(rhat,rvhat,teta);
+local can, tuto, aux1, weig, u;
+can=rndn(100000,1)*rvhat+rhat;
+tuto=(can.<1);
+can=selif(can,tuto);
+aux1=teta'*teta; @for a particular value of the prior var-cov matrix @
+weig=-1/2*aux1*(1./(1-can^2));
+weig=exp(weig)/sumc(exp(weig));
+weig=sumc(weig);
+u=rndu(1,1);
+u=ceil(u);
+can=can[u];
+retp(can);
+endp;
+
+proc(1)=drawrhob2(rhat,rvhat,teta);
+local can, tuto, aux1, weig, u;
+can=rndu(50000,1);
+aux1=teta'*teta; @for a particular value of the prior var-cov matrix @
+weig=-1/2*aux1*(1./(1-can^2));
+weig=weig-1/2*((can-rhat)^2)./rvhat;
+weig=exp(weig)/sumc(exp(weig));
+weig=sumc(weig);
+u=rndu(1,1);
+u=ceil(u);
+can=can[u];
+retp(can);
+endp;
+
+proc(1)=drawrhob4(rhat,rvhat,teta,old);
+local can, tuto, aux1, weigold, u, weigneu, bayes, draw, ha, party;
+ha=0;
+can=rndu(1,1);
+
+aux1=teta'*teta; @for a particular value of the prior var-cov matrix @
+weigneu=-1/2*aux1*(1./(1-can^2));
+weigneu=weigneu-1/2*((can-rhat)./rvhat)^2;
+
+weigold=-1/2*aux1*(1./(1-old^2));
+weigold=weigold-1/2*((old-rhat)./rvhat)^2;
+
+bayes=weigneu-weigold;
+u=ln(rndu(1,1));
+if u<bayes;
+draw=can;
+else;
+draw=old;
+endif;
+retp(draw);
+endp;
+
+
+proc(1)=drawrhob3(rhat,rvhat,teta,old);
+local can, tuto, aux1, weigold, u, weigneu, bayes, draw, ha, party;
+ha=0;
+party=0.05;
+do while (1-ha);
+can=old+party*rndn(1,1);
+ha=(truncbelow<can)*(can<1);
+endo;
+aux1=teta'*teta; @for a particular value of the prior var-cov matrix @
+weigneu=-1/2*aux1*(1./(1-can^2));
+weigneu=weigneu-1/2*((can-rhat)./rvhat)^2;
+weigneu=weigneu-ln(cdfn((1-can)/party)-cdfn((truncbelow-can)/party));
+weigold=-1/2*aux1*(1./(1-old^2));
+weigold=weigold-1/2*((old-rhat)./rvhat)^2;
+weigold=weigold-ln(cdfn((1-old)/party)-cdfn((truncbelow-old)/party));
+bayes=weigneu-weigold;
+u=ln(rndu(1,1));
+if u<bayes;
+draw=can;
+else;
+draw=old;
+endif;
+retp(draw);
+endp;
+
+
+proc efsample(dista);
+@This procedure calculates the effective sample size @
+@The stopping rule is the same as in our econometric review paper@
+local m, pepe, anterior, candi, juan1, juan2, jonas, j, corre;
+m=0;         /* m is the maximum lag in the calculation of the effective sample size */
+pepe=1;
+anterior=1000000;
+
+do while pepe;
+candi=m+1;
+juan1=vcx(trimr(dista,0,2*candi)~trimr(dista,2*candi,0))*(rows(dista)-2*candi-1)/(rows(dista)-2*candi);
+juan2=vcx(trimr(dista,0,2*candi+1)~trimr(dista,2*candi+1,0))*(rows(dista)-2*candi-1-1)/(rows(dista)-2*candi-1);
+jonas=juan1[1,2]+juan2[1,2];
+pepe=(jonas>0)*(jonas<anterior);
+anterior=jonas;
+m=m+pepe;
+endo;
+
+jonas=0;
+j=1;
+do while j<=(2*m+1);
+corre=corrx(   trimr(dista,0,j)~trimr(dista,j,0));
+jonas=jonas+corre[1,2];
+j=j+1;
+endo;
+retp(1/(1+2*jonas));
+endp;
+
+proc efsample2(dista);
+@This procedure calculates the effective sample size @
+@The stopping rule is: calculate autocorrelations until they become smaller than fofo @
+local m, pepe, anterior, candi, juan1, juan2, jonas, j, corre, fofo, parar;
+fofo=0.1;
+jonas=0;
+j=1;
+parar=1;
+do while parar;
+corre=corrx(   trimr(dista,0,j)~trimr(dista,j,0));
+if corre[1,2]>fofo;
+jonas=jonas+corre[1,2];
+j=j+1;
+else;
+parar=0;
+endif;
+endo;
+
+retp(1/(1+2*jonas));
+endp;
+
+
+
+proc (2)=drawinlogsig(sigtdra1,sdraw, y2,t,capRt, Q, sdraw, rhoh, hh_0, Vhh_0, initial_before);
+/* The purpose of this procedure is to draw the initial condition of the log volatility */ 
+local nh,i,j,jj,vhat,Vtv,yss,Qc,prw,mi,vi,trand,imix,cprw,prw1,temp1,yss1,Ztemp, vsig, xsig, indraw, iHta;
+nh=cols(y2);
+prw=zeros(7,1);
+prw1=zeros(7,1);
+mi=zeros(7,1);
+vi=zeros(7,1);
+@set the values for the mixing distribution from KSC page 371@
+vi[1,1]=5.79596; vi[2,1] = 2.61369; vi[3,1] = 5.17950; vi[4,1] = 0.16735; vi[5,1] = 0.64009; vi[6,1] = 0.34023; vi[7,1] = 1.26261; 
+mi[1,1]=-10.12999; mi[2,1] = -3.97281; mi[3,1] = -8.56686; mi[4,1] = 2.77786; mi[5,1] = 0.61942; mi[6,1] = 1.79518; mi[7,1] = -1.08819; 
+prw[1,1]=0.00730; prw[2,1] = 0.10566; prw[3,1] = 0.00002; prw[4,1] = 0.04395; prw[5,1] = 0.34001; prw[6,1] = 0.24566; prw[7,1] = 0.25750; 
+yss = ln(y2*offsetC^2) - sigtdra1[2:t+1,.];
+@first draw volatilities conditional on sdraw@
+iHta=zeros(t*nh,nh);
+yss1=zeros(t,nh);
+
+@next draw sdraw conditional on vdraw@
+for jj (1,nh,1);
+for i (1,t,1);
+  for j (1,7,1);
+temp1= (1/sqrt(2*pi*vi[j,1]))*exp(-.5*(((yss[i,jj] - initial_before[jj] - mi[j,1]+1.2704)^2)/vi[j,1]));
+ prw1[j,1] = prw[j,1]*temp1;
+ 
+endfor;
+prw1=prw1./sumc(prw1);
+cprw = cumsumc(prw1);
+trand=rndu(1,1);
+if trand <cprw[1,1]; imix=1; elseif trand<cprw[2,1]; imix=2; elseif trand<cprw[3,1]; imix=3; elseif trand<cprw[4,1]; imix=4; 
+elseif trand<cprw[5,1]; imix=5; elseif trand<cprw[6,1]; imix=6; else; imix=7; endif; 
+sdraw[i,jj]=imix;
+endfor;
+endfor;
+
+
+vsig=zeros(nh,nh);
+xsig=zeros(nh,1);  /* vsig and xsig will containt the variance and mean of the initial condition */
+for i (1,t,1);
+for j (1,nh,1);
+imix=sdraw[i,j];
+iHta[(i-1)*nh+j,j] = 1/vi[imix,1];
+yss1[i,j] = yss[i,j] - mi[imix,1] + 1.2704;
+endfor;
+vsig=vsig+iHta[(i-1)*nh+1:i*nh,.];
+xsig=xsig+iHta[(i-1)*nh+1:i*nh,.]*yss1[i,.]';
+endfor;
+vsig=invpd(vsig+Vhh_0inv);
+xsig=vsig*(Vhh_0inv*hh_0+xsig);
+indraw=xsig+chol(vsig)'*rndn(nh,1);
+
+
+retp(indraw, sdraw);
+endp;
+
+
+proc (1)=drawiwish(fredom, matr);
+local draw,dim;
+dim=rows(matr);
+draw=rndn(fredom,dim)*chol(invpd(matr));
+draw=invpd(draw'*draw);
+retp(draw);
+endp;
+
+
+proc (1)= drawtruncated(a2,mean2,std2);
+local help1, help2, help3,u, lamda, exe, again, u2;
+/* This draws rho forcing it to be smaller than a2. It uses Geweke 1989 trick with the exponential distribution */
+a2=(a2-mean2)/std2;
+lamda=a2;
+help1=(-a2*lamda);
+again=1;
+do while again;
+u=ln(1-rndu(1,1));
+exe=-1/lamda*u+lamda;  /* THis is the same as -1/lamda*(u+help1) */
+u2=rndu(1,1);
+again=(ln(u2)>(-1/2*(exe-lamda)^2));
+endo;
+exe=exe*std2+mean2;
+retp(exe);
+endp;
+
+proc (1)= drawtruncated2(a1,a2, mean,std);
+local help1, help2, help3,u, lamda, exe, again, u2,a, sign1, sign2;
+/* This draws rho forcing it to be smaller than a2 and bigger than a1. It uses Geweke 1989 trick with the exponential distribution */
+sign1=(a1-mean)/abs(a1-mean);
+sign2=(a2-mean)/abs(a2-mean);
+if sign1/=sign2;
+"Geweke's problem";
+stop;
+endif;
+a1=abs(a1-mean)/std;
+a2=abs(a2-mean)/std;
+a=a1|a2;
+a1=minc(a);
+a2=maxc(a);
+lamda=a1;
+help1=(-a1*lamda);
+help2=(-a2*lamda);
+again=1;
+do while again;
+u=ln(1+rndu(1,1)*(-1+exp(-lamda*(a2-a1))));
+exe=-1/lamda*u+lamda;  /* This is the same as -1/lamda*(u+help1), but avoids numerical problems */
+u2=rndu(1,1);
+again=(u2>exp(-1/2*(exe-lamda)^2));
+endo;
+exe=sign1*exe*std+mean;
+retp(exe);
+endp;
+
+
+proc (3) = dk(y,p,m,t,Qchol,Ht,Htchol,Qt,Z,capRt,capTt, a1, P1);
+local i,wplus,pm,yplus,aplus,what,ahat,whatp,ahatp,atilda,rtemp,Hchol,Vtahat,Vtahatp, robcheck1, robcheck2, robcheck3;
+/* first draw w as in page 605 of DK */
+/* a1 and P1 are the mean and var-cov matrix of the initial condition  */
+pm=p+m;
+wplus=zeros(pm*t,1);
+for i (1,t,1);
+{uv,sv,vv}=svd1(Ht[(i-1)*p+1:i*p,.]);
+Hchol=(uv*sqrt(sv)*vv');
+/*
+Hchol=chol(Ht[(i-1)*p+1:i*p,.]);
+*/
+rtemp = capRt[(i-1)*m+1:i*m,.];
+wplus[(i-1)*pm+1:(i-1)*pm+p,1] = Hchol'rndn(p,1);
+if i==1;
+wplus[(i-1)*pm+p+1:(i-1)*pm+pm,1] = raiz(P1)'*rndn(m,1);
+else;
+wplus[(i-1)*pm+p+1:(i-1)*pm+pm,1] = rtemp*Qchol'rndn(m,1);
+endif;
+endfor;
+{yplus,aplus} = recur(Z,wplus,m,p,t,capRt,capTt, a1);
+@{what,  ahat,  Vtahat}  = kalfilt(y    ,Z,Ht,Qt,m,p,t,capRt,capTt, a1, p1);
+{whatp, ahatp, Vtahatp} = kalfilt(yplus,Z,Ht,Qt,m,p,t,capRt,capTt);@
+{robcheck1, robcheck2, robcheck3} = kalfilt(y-yplus,Z,Ht,Qt,m,p,t,capRt,capTt, a1, P1);
+atilda = robcheck2 + aplus;
+@atilda=ahat-ahatp+aplus;@
+retp(atilda,0,0);
+endp;
+
+
+
+/*run the Kalman filter and then return what -- mean of w */
+proc (3) = kalfilt(y1,Z,Ht,Qt,m,p,t,capRt,capTt, a1, P1);
+local alph,Vtt,what,rt,Ltt,Kkeep,Kt,Fkeep,Lkeep,Pkeep,a,v,Pt,i,Ft,Ftinv,lterm,fterm,kterm,Nterm,pterm,pm,ztemp,rtemp,htemp;
+/*kalman filter code */
+Kkeep=zeros(t*m,p);
+Lkeep=zeros(t*m,m);
+
+Fkeep=zeros(t*p,p);
+Pkeep=zeros(t*m,m);
+a=zeros(m,t);
+a[.,1]=a1;  /* Mean of the initial condition */
+v=zeros(p,t);
+@Pt=zeros(m,m);@
+Pt=P1;     /* Variance of the initial condition */
+for i (1,t,1);
+htemp=Ht[(i-1)*p+1:i*p,.];
+ztemp = Z[(i-1)*p+1:i*p,.];
+rtemp = capRt[(i-1)*m+1:i*m,.];
+v[.,i]=y1[.,i] - ztemp*a[.,i];
+Ft= ztemp*Pt*ztemp' + htemp;
+Ftinv=inv(Ft);
+
+Fkeep[(i-1)*p+1:i*p,.]=Ftinv;
+Kt = capTt*Pt*ztemp'*Ftinv;
+Kkeep[(i-1)*m+1:i*m,.]=Kt;
+Ltt = capTt*eye(m) - Kt*ztemp;
+Lkeep[(i-1)*m+1:i*m,.]=Ltt;
+if i<t;
+a[.,i+1] = capTt*a[.,i] + Kt*v[.,i];
+endif;
+Pt = capTt*Pt*Ltt' + rtemp*Qt*rtemp';
+Pkeep[(i-1)*m+1:i*m,.]=Pt;
+endfor;
+/*backward recursion to evaluate rt and, thus, whatt*/
+rt=zeros(m,t+1);
+pm=p+m;
+what=zeros(pm*t,1);
+Nterm=0;
+Vtt=zeros(t*m,m);
+for i (t,1,-1);
+htemp=Ht[(i-1)*p+1:i*p,.];
+rtemp = capRt[(i-1)*m+1:i*m,.];
+ztemp = Z[(i-1)*p+1:i*p,.];
+lterm = Lkeep[(i-1)*m+1:i*m,.];
+fterm = Fkeep[(i-1)*p+1:i*p,.]';
+kterm = Kkeep[(i-1)*m+1:i*m,.];
+what[(i-1)*pm+1:(i-1)*pm+p,1]=htemp*Fterm*v[.,i] - htemp*kterm'*rt[.,i+1];
+what[(i-1)*pm+p+1:i*pm,1]=Qt*rtemp'rt[.,i+1];
+rt[.,i] = ztemp'fterm*v[.,i] + lterm'rt[.,i+1];
+/****** For computing the SDDR for each t *****************************************/
+pterm=Pkeep[(i-1)*m+1:i*m,.];
+Nterm=ztemp'fterm*ztemp+lterm'Nterm*lterm;
+Vtt[(i-1)*m+1:i*m,.]=(pterm-pterm*Nterm*pterm);
+/***********************************************/
+endfor;
+alph=zeros(m,t);
+alph[.,1]=a1+P1*rt[.,1];
+for i (2,t,1);
+rtemp = capRt[(i-1)*m+1:i*m,.];
+alph[.,i] = capTt*alph[.,i-1] + rtemp*Qt*rtemp'rt[.,i];
+endfor;
+retp(what,alph,Vtt);
+endp;
+
+proc (2) = recur(Z,wdraw,m,p,t,capRt,capTt, a1);
+local pm,ydraw,alpha,ztemp,rtemp;
+/*now get implied draw of y*/
+alpha=zeros(m,t+1);
+alpha[.,1]=a1;  /* put mean of initial condition here */
+pm=p+m;
+ydraw=zeros(p,t);
+for i (1,t,1);
+rtemp = capRt[(i-1)*m+1:i*m,.];
+ztemp = Z[(i-1)*p+1:i*p,.];
+alpha[.,i+1]=capTt*alpha[.,i] +rtemp*wdraw[(i-1)*pm+p+1:i*pm,1];
+ydraw[.,i]=ztemp*alpha[.,i+1]+wdraw[(i-1)*pm+1:(i-1)*pm+p,1];
+endfor;
+alpha=alpha[.,2:t+1];
+retp(ydraw,alpha);
+endp;
+
+/*************************************************
+Command:  s=wish(h,n)
+Purpose:  Draws an m x m matrix from a wishart distribution
+          with scale matrix h and degrees of freedom nu = n.
+          This procedure uses Bartlett's decomposition.
+Inputs:   h     -- m x m scale matrix.
+          n     -- scalar degrees of freedom.
+Outputs:  s     -- m x m matrix draw from the wishart
+                   distribution.
+Note: Parameterized so that mean is n*h
+**************************************************/
+proc 1=wish(h,n);
+local A,m,L,D,T,u,s,v;
+  {u,s,v}=svd1(h);
+  
+  A=u*sqrt(s)*v'*rndn(rows(h),n);
+  A=A*A';
+  retp(A);
+endp;
+
+@this modifies the univariate ksc subroutine to allow for p-variate model@
+@measurement error covariance matrix assumed to be diagonal as in Primiceri (2005)@
+@Drawing log volatilities using method of Kim, Shephard and Chib with 7 Normals in mixture@
+@y2 is y minus the conditional mean all squared@
+@capRt is from DK notation which will be used for dynamic mixture. for now simply set to ones@
+@Q is covariance matrix for error in state equation@
+proc (2) = ksc1(y2,t,capRt,Q,sdraw,h0draw,rhoh);
+local nh,i,j,jj,vdraw,vhat,Vtv,yss,Qc,Ht,Htchol,prw,mi,vi,trand,imix,cprw,prw1,temp1,yss1,Ztemp;
+nh=cols(y2);
+prw=zeros(7,1);
+prw1=zeros(7,1);
+mi=zeros(7,1);
+vi=zeros(7,1);
+@set the values for the mixing distribution from KSC page 371@
+vi[1,1]=5.79596; vi[2,1] = 2.61369; vi[3,1] = 5.17950; vi[4,1] = 0.16735; vi[5,1] = 0.64009; vi[6,1] = 0.34023; vi[7,1] = 1.26261;
+mi[1,1]=-10.12999; mi[2,1] = -3.97281; mi[3,1] = -8.56686; mi[4,1] = 2.77786; mi[5,1] = 0.61942; mi[6,1] = 1.79518; mi[7,1] = -1.08819;
+prw[1,1]=0.00730; prw[2,1] = 0.10566; prw[3,1] = 0.00002; prw[4,1] = 0.04395; prw[5,1] = 0.34001; prw[6,1] = 0.24566; prw[7,1] = 0.25750;
+yss = ln(y2*offsetC^2) - h0draw';
+
+@first draw volatilities conditional on sdraw@
+
+Ht=zeros(t*nh,nh);
+Htchol=zeros(t*nh,nh);
+yss1=zeros(t,nh);
+
+for i (1,t,1);
+for j (1,nh,1);
+imix=sdraw[i,j];
+Ht[(i-1)*nh+j,j] = vi[imix,1];
+Htchol[(i-1)*nh+j,j] = chol(vi[imix,1]);
+yss1[i,j] = yss[i,j] - mi[imix,1] + 1.2704;  
+endfor;
+endfor;
+Qc=raiz(Q);
+Ztemp=ones(t,1).*.eye(nh);
+{vdraw,vhat,Vtv} = dk(yss1',nh,nh,t,Qc,Ht,Htchol,Q,Ztemp,capRt,rhoh,zeros(nh,1),Q);
+vdraw=zeros(nh,1)~vdraw;
+vdraw=vdraw';
+/*
+@next draw sdraw conditional on vdraw@
+for jj (1,nh,1);
+for i (1,t,1);
+  for j (1,7,1);
+temp1= (1/sqrt(2*pi*vi[j,1]))*exp(-.5*(((yss[i,jj] - vdraw[i,jj] - mi[j,1]+1.2704)^2)/vi[j,1]));
+ prw1[j,1] = prw[j,1]*temp1;
+  
+endfor;
+prw1=prw1./sumc(prw1);
+cprw = cumsumc(prw1);
+trand=rndu(1,1);
+if trand <cprw[1,1]; imix=1; elseif trand<cprw[2,1]; imix=2; elseif trand<cprw[3,1]; imix=3; elseif trand<cprw[4,1]; imix=4; 
+elseif trand<cprw[5,1]; imix=5; elseif trand<cprw[6,1]; imix=6; else; imix=7; endif; 
+sdraw[i,jj]=imix;
+endfor;
+endfor;*/
+retp(vdraw,sdraw);
+endp;
+
+proc (6) = ts_prior(rawdat,tau,p,plag,btemp,r);
+local yt,zt,m,i,j,jj,ztemp,xtemp,vbar,xhy,zhat1, a02mo,a0draw,
+a0mean,hdraw,aols,sse2,achol,u,s,v,ssig,hbar,a0,numa,ssig1,hbar1,irep, bols, ic;
+
+yt=zeros(p,tau);
+for i (1,p,1);
+yt[i,.]=rawdat[plag+1:tau+plag,i+constante]'-rawdat[plag:tau+plag-1,i+constante]';
+endfor;
+
+/*m is the number of elements in the state vector*/
+m= p*constante + p*p + (plag-1)*p^2;
+Zt={};
+for i (plag+1,tau+plag,1);
+if constante;
+ztemp=eye(p);
+else;
+ztemp={};
+endif;
+j=1; do while j<=plag;
+if j == 1;
+ xlag = rawdat[i-j,1+constante:p+constante]*btemp;
+ ztemp = ztemp~(eye(p).*.xlag);
+else;
+ xlag = rawdat[i-j+1,2:p+1]-rawdat[i-j,1+constante:p+constante];
+ ztemp = ztemp~(eye(p).*.xlag);
+endif;
+j=j+1; endo;
+Zt = Zt|ztemp;
+endfor;
+
+
+vbar = zeros(m,m);
+xhy=zeros(m,1);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+vbar = vbar + zhat1'zhat1;
+xhy=xhy + zhat1'yt[.,i];
+endfor;
+
+vbar=invpd(vbar);
+
+aols = vbar*xhy;
+bols=aols[constante*p+1:(p*(p+constante))]';
+bols=reshape(bols,p,p);
+{bols,s,v}=svd1(bols);
+if plag>1;
+if constante;
+aols=aols[1:p]|vec(s[1:r,1:r]*v[.,1:r]')|aols[p*(p+1)+1:m]; 
+else;
+aols=vec(s[1:r,1:r]*v[.,1:r]')|aols[p*(p+constante)+1:m]; 
+endif;
+bols=bols[.,1:r];
+Zt=Zt[.,1:p]~(Zt[.,p+1:(p*(p+1))]*(eye(p).*.bols))~Zt[.,(p*(p+1)+1):m];
+elseif plag==1;
+if constante;
+aols=aols[1:p]|vec(s[1:r,1:r]*v[.,1:r]'); 
+bols=bols[.,1:r];
+Zt=Zt[.,1:p]~(Zt[.,p+1:(p*(p+1))]*(eye(p).*.bols));
+else;
+aols=vec(s[1:r,1:r]*v[.,1:r]'); 
+bols=bols[.,1:r];
+Zt=(Zt[.,constante*p+1:(p*(p+constante))]*(eye(p).*.bols));
+endif;
+aols;
+endif;
+m=cols(Zt);
+sse2=zeros(p,p);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+sse2 = sse2 + (yt[.,i] - zhat1*aols)*(yt[.,i] - zhat1*aols)';
+endfor;
+
+vbar = zeros(m,m);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+vbar = vbar + zhat1'*invpd(sse2)*zhat1;
+endfor;
+vbar=invpd(vbar);
+
+hbar = sse2./tau;
+achol = chol(hbar)';
+ssig=zeros(p,p);
+for i (1,p,1);
+ssig[i,i] = achol[i,i]; 
+for j (1,p,1);
+achol[j,i]=achol[j,i]/ssig[i,i];
+endfor;
+endfor;
+achol = inv(achol);
+numa=p*(p-1)/2;
+a0=zeros(numa,1);
+ic=1;
+for i (2,p,1);
+for j (1,i-1,1);
+a0[ic,1]=achol[i,j];
+ic=ic+1;
+endfor;
+endfor;
+ssig1=zeros(p,1);
+for i (1,p,1);
+ssig1[i,1]=0.75*ln(ssig[i,i]^2);
+endfor;
+
+hbar1=invpd(tau*hbar);
+hdraw = zeros(p,p);
+a02mo=zeros(numa,numa);
+a0mean=zeros(numa,1);
+for irep (1,nrep,1);
+hdraw = wish(hbar1,tau);
+hdraw=invpd(hdraw);
+achol = chol(hdraw)';
+ssig=zeros(p,p);
+for i (1,p,1);
+ssig[i,i] = achol[i,i]; 
+for j (1,p,1);
+achol[j,i]=achol[j,i]/ssig[i,i];
+endfor;
+endfor;
+achol = inv(achol);
+a0draw=zeros(numa,1);
+ic=1;
+for i (2,p,1);
+for j (1,i-1,1);
+a0draw[ic,1]=achol[i,j];
+ic=ic+1;
+endfor;
+endfor;
+a02mo=a02mo+a0draw*a0draw';
+a0mean=a0mean+a0draw;
+endfor;
+a02mo=a02mo./nrep;
+a0mean=a0mean./nrep;
+a02mo = a02mo - a0mean*a0mean';
+retp(aols,vbar,a0,ssig1,a02mo,bols);
+endp;
+
+
+proc (6) = ts_prior2(rawdat,tau,p,plag,btemp,r);
+local yt,zt,m,i,j,jj,ztemp,xtemp,vbar,xhy,zhat1, a02mo,a0draw,
+a0mean,hdraw,aols,sse2,achol,u,s,v,ssig,hbar,a0,numa,ssig1,hbar1,irep, bols, ic;
+
+yt=zeros(p,tau);
+for i (1,p,1);
+yt[i,.]=rawdat[plag+1:tau+plag,i+1]'-rawdat[plag:tau+plag-1,i+1]';
+endfor;
+
+/*m is the number of elements in the state vector*/
+m= p + p*p + (plag-1)*p^2;
+Zt={};
+for i (plag+1,tau+plag,1);
+ztemp=eye(p);
+j=1; do while j<=plag;
+if j == 1;
+ xlag = rawdat[i-j,2:p+1]*btemp;
+ ztemp = ztemp~(eye(p).*.xlag);
+else;     
+ xlag = rawdat[i-j+1,2:p+1]-rawdat[i-j,2:p+1];
+ ztemp = ztemp~(eye(p).*.xlag);
+endif;
+j=j+1; endo;
+Zt = Zt|ztemp;
+endfor;
+
+
+vbar = zeros(m,m);
+xhy=zeros(m,1);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+vbar = vbar + zhat1'zhat1;
+xhy=xhy + zhat1'yt[.,i];
+endfor;
+
+vbar=invpd(vbar);
+
+aols = vbar*xhy;
+bols=aols[p+1:(p*(p+1))]';
+bols=reshape(bols,p,p);
+{u,s,bols}=svd1(bols);
+if plag>1;
+aols=aols[1:p]|vec(u[.,1:r]*s[1:r,1:r])|aols[p*(p+1)+1:m];
+elseif plag==1;
+aols=aols[1:p]|vec(u[.,1:r]*s[1:r,1:r]);
+endif;
+bols=bols[1:r,.];
+if plag>1;
+Zt=Zt[.,1:p]~(Zt[.,p+1:(p*(p+1))]*(eye(p).*.bols))~Zt[.,(p*(p+1)+1):m];
+elseif plag==1;
+Zt=Zt[.,1:p]~(Zt[.,p+1:(p*(p+1))]*(eye(p).*.bols));
+endif;
+m=cols(Zt);
+sse2=zeros(p,p);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+sse2 = sse2 + (yt[.,i] - zhat1*aols)*(yt[.,i] - zhat1*aols)';
+endfor;
+
+vbar = zeros(m,m);
+for i (1,tau,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+vbar = vbar + zhat1'*invpd(sse2)*zhat1;
+endfor;
+vbar=invpd(vbar);
+
+hbar = sse2./tau;
+
+
+
+achol = chol(hbar)';
+ssig=zeros(p,p);
+for i (1,p,1);
+ssig[i,i] = achol[i,i]; 
+for j (1,p,1);
+achol[j,i]=achol[j,i]/ssig[i,i];
+endfor;
+endfor;
+achol = inv(achol);
+numa=p*(p-1)/2;
+a0=zeros(numa,1);
+ic=1;
+for i (2,p,1);
+for j (1,i-1,1);
+a0[ic,1]=achol[i,j];
+ic=ic+1;
+endfor;
+endfor;
+ssig1=zeros(p,1);
+for i (1,p,1);
+ssig1[i,1]=0.75*ln(ssig[i,i]^2);
+endfor;
+
+hbar1=invpd(tau*hbar);
+hdraw = zeros(p,p);
+a02mo=zeros(numa,numa);
+a0mean=zeros(numa,1);
+for irep (1,nrep,1);
+hdraw = wish(hbar1,tau);
+hdraw=invpd(hdraw);
+achol = chol(hdraw)';
+ssig=zeros(p,p);
+for i (1,p,1);
+ssig[i,i] = achol[i,i]; 
+for j (1,p,1);
+achol[j,i]=achol[j,i]/ssig[i,i];
+endfor;
+endfor;
+achol = inv(achol);
+a0draw=zeros(numa,1);
+ic=1;
+for i (2,p,1);
+for j (1,i-1,1);
+a0draw[ic,1]=achol[i,j];
+ic=ic+1;
+endfor;
+endfor;
+
+a02mo=a02mo+a0draw*a0draw';
+a0mean=a0mean+a0draw;
+
+endfor;
+
+a02mo=a02mo./nrep;
+a0mean=a0mean./nrep;
+a02mo = a02mo - a0mean*a0mean';
+
+retp(aols,vbar,a0,ssig1,a02mo,bols);
+endp;
+
+
+
+@basic results for a VAR using a noninformative prior@
+proc (3) = varbase(rawdat,p,plag,bigt,btemp,nrep,nburn, constante);
+local yt,zt,m,i,j,ztemp,xlag,xtemp,t,vbar,xhy,zhat1,yhat1,jj,
+aamean,avar,adraw,ahat,sse2,sdvbar,ntot,irep,hdraw,hbar,hmean, yhat;
+
+yt=zeros(p,bigt-plag);
+for i (1,p,1);
+yt[i,.]=rawdat[plag+1:bigt,i+constante]'-rawdat[plag:bigt-1,i+constante]';
+endfor;
+
+m= p*constante + p*p + (plag-1)*p^2;
+Zt={};
+for i (plag+1,bigt,1);
+if constante;
+ztemp=eye(p);
+else;
+ztemp={};
+endif;
+j=1; do while j<=plag;
+if j == 1;
+ xlag = rawdat[i-j,1+constante:p+constante]*btemp;
+ ztemp = ztemp~(eye(p).*.xlag);
+else;     
+ xlag = rawdat[i-j+1,2:p+constante]-rawdat[i-j,2:p+constante];
+ ztemp = ztemp~(eye(p).*.xlag);
+endif;
+j=j+1; endo;
+Zt = Zt|ztemp;
+endfor;
+t=cols(yt);
+aamean=zeros(m,1);
+avar=zeros(m,1);
+hmean=zeros(p,p);
+Hdraw = eye(p);
+
+ntot=nrep+nburn;
+for irep (1,ntot,1);
+
+vbar = zeros(m,m);
+xhy=zeros(m,1);
+for i (1,t,1);
+zhat1=Zt[(i-1)*p+1:i*p,.];
+yhat1 = yt[.,i] ;
+vbar = vbar + zhat1'Hdraw*zhat1;
+xhy=xhy + zhat1'Hdraw*yhat1;
+endfor;
+vbar=invpd(vbar);
+ahat = vbar*xhy;
+adraw = ahat + chol(vbar)'rndn(m,1);
+
+yhat = zeros(p,t);
+for i (1,t,1);
+yhat[.,i] = yt[.,i] - Zt[(i-1)*p+1:i*p,.]*adraw;
+endfor;
+
+hbar = yhat*yhat';
+hbar=invpd(hbar);
+hdraw=wish(hbar,t);
+
+if irep>nburn;
+avar = avar + adraw.^2;
+aamean = aamean + adraw;
+hmean=hmean + invpd(hdraw);
+ 
+endif;
+endfor;
+avar = avar./nrep;
+aamean = aamean./nrep;
+avar = sqrt(avar - aamean.^2);
+hmean=hmean./nrep;
+retp(aamean,avar,hmean);
+endp;
+
+
+
+
+proc gck(yg,gg,hh,capg, f, capf, sigv,kold,t,ex0,vx0,nvalk,kprior,kvals,p,kstate);
+local jumpout,kdraw,i,j,ic,omega,btplus1,gatplus1,htplus1,cgtplus1,ftplus1,ctplus1,dtplus1,rtplus1,atplus1,cct,cplus1,tempu,temps,tempv,otplus1,
+mu,vtm1,mut,mutplus1,rtinv,satplus1,rt,ht,mt,vt,jt,ft,ot,gat,lpyt,mtm1,lpyt1n,tt,lprob,pprob;
+@Subroutine implements Gerlach, Carter and Kohn (JASA, 2000) and uses their notation@
+@I have set it up so that their K enters only their Gamma matrix (i.e. state equation error covariance)@
+@I have also set it up so that state equation has constant error covariance over time -- except for changepoints@
+@The parts for Gamma matrix should be only part which are application specific@
+@I have tried to follow their notation as far as possible and references to Lemmas and pages refer to this paper@
+@One difference is that I have assumed error in state and measurement equation independent and, thus, used the slightly simpler
+formulation of Giordani and Kohn in their appendices@
+@Inputs: yg = p by t data matrix
+         gg = p by t matrix of det terms in measurement equation (usually set to zeros).
+         hh = tp by m matrix (note that this is transpose of GKCs definition)
+         capg = t*p by p matrix containing gt which is akin to the st dev of measurement equation
+         f = m by t matrix of det terms in the state equation (usually set to zero in my work)
+         capf = tm by m matrix from state equation (set to identies for random walk evolution of states)
+        sigv is the standard deviation (or sigv*sigv') is the state equation error variance when regime change occurs (i.e. Kt=1)
+        sigv will be an m by m matrix 
+         kold is the previous draw of k, which is t by 1 (i.e. this code only allows for one k)
+                t = nunber of observations
+                 kstate = dimensionality of state vector
+                ex0, vx0 = mean and variance for initial values for state equation (m by 1 and m by m)
+                nvalk = number of values k can take on -- usually 2 for 0/1
+                kprior = prior probabilities for each value for k = nvalk by 1 (this is okay for Bernoulli case, but in general may make this nvalk by t)       
+                kvals are the values k can take on -- usually 0/1           
+@
+
+@GCK's Step 1 on page 821@
+mu=zeros(t*kstate,1);
+omega=zeros(t*kstate,kstate);
+gatplus1 = zeros(kstate,kstate);
+for i (t-1,1,-1);
+gatplus1 = sigv*kold[i+1,1];
+ftplus1=capf[kstate*i+1:kstate*(i+1),.];
+cgtplus1=capg[i*p+1:(i+1)*p,.];
+htplus1=hh[i*p+1:(i+1)*p,.]';
+
+rtplus1 = (htplus1'gatplus1)*(htplus1'gatplus1)' + cgtplus1*cgtplus1';
+rtinv=invpd(rtplus1);
+btplus1= gatplus1*gatplus1'htplus1*rtinv;
+atplus1=(eye(kstate) - btplus1*htplus1')*ftplus1;
+if kold[i+1,1]==0;
+ctplus1=zeros(kstate,kstate);
+else;
+cct = gatplus1*(eye(kstate) - gatplus1'htplus1*rtinv*htplus1'gatplus1)*gatplus1';
+ctplus1=chol(cct)';
+endif;
+otplus1 = omega[kstate*i+1:kstate*(i+1),.];
+dtplus1 = ctplus1'otplus1*ctplus1 + eye(kstate);
+omega[kstate*(i-1)+1:kstate*i,.] = atplus1'(otplus1 - otplus1*ctplus1*invpd(dtplus1)*ctplus1'otplus1)*atplus1
++ftplus1'htplus1*rtinv*htplus1'ftplus1;
+satplus1 = (eye(kstate) - btplus1*(htplus1'))*f[.,i+1] - btplus1*gg[.,i+1];
+mutplus1=mu[kstate*i+1:kstate*(i+1),.];
+mu[kstate*(i-1)+1:kstate*i,.] = atplus1'(eye(kstate) - otplus1*ctplus1*invpd(dtplus1)*ctplus1')*(mutplus1 -
+otplus1*(satplus1 + btplus1*yg[.,i+1])) + ftplus1'htplus1*rtinv*(yg[.,i+1] - gg[.,i+1] - htplus1'f[.,i+1]);  
+endfor;
+
+@GCKs Step 2 on pages 821-822@
+kdraw=kold;
+ht=hh[1:p,.]';
+ft=capf[1:kstate,.];
+gat=zeros(kstate,kstate);
+@Note: this specification implies no shift in first period -- sensible@
+rt = ht'ft*vx0*ft'ht + ht'gat*gat'ht+ capg[1:p,.]*capg[1:p,.]';
+rtinv=invpd(rt);
+jt = (ft*vx0*ft'ht + gat*gat'ht)*rtinv;
+mtm1 = (eye(kstate) - jt*ht')*(f[.,1] + ft*ex0) + jt*(yg[.,1] - gg[.,1]);
+vtm1 = ft*vx0*ft'+ gat*gat' - jt*rt*jt';
+lprob=zeros(nvalk,1);
+for i (2,t,1);
+ht=hh[(i-1)*p+1:i*p,.]';
+ft=capf[kstate*(i-1)+1:kstate*i,.];
+for j (1,nvalk,1);
+gat = kvals[j,1]*sigv;
+rt = ht'ft*vtm1*ft'ht + ht'gat*gat'ht + capg[(i-1)*p+1:i*p,.]*capg[(i-1)*p+1:i*p,.]';
+rtinv=invpd(rt);
+jt = (ft*vtm1*ft'ht + gat*gat'ht)*rtinv;
+mt = (eye(kstate) - jt*ht')*(f[.,i] + ft*mtm1) + jt*(yg[.,i] - gg[.,i]);
+vt = ft*vtm1*ft' + gat*gat' - jt*rt*jt';
+
+
+lpyt = -.5*ln(det(rt)) - .5*(yg[.,i] - gg[.,i] - ht'(f[.,i] + ft*mtm1))'rtinv*(yg[.,i] - gg[.,i] - ht'(f[.,i] + ft*mtm1));
+if det(vt)<=0;
+tt=zeros(kstate,kstate);
+else;
+tt = chol(vt)';
+endif;
+ot=omega[kstate*(i-1)+1:kstate*i,.];
+mut=mu[kstate*(i-1)+1:kstate*i,.];
+tempv=eye(kstate) + tt'ot*tt;
+lpyt1n=-.5*ln(det(tempv)) -.5*(mt'ot*mt - 2*mut'mt - (mut - ot*mt)'tt*invpd(tempv)*tt'(mut - ot*mt));
+lprob[j,1] = ln(kprior[j,1]) + lpyt1n + lpyt;
+
+endfor;
+pprob=exp(lprob)./sumc(exp(lprob));
+
+tempv=rndu(1,1);
+tempu=0;
+for j (1,nvalk,1);
+tempu=tempu+pprob[j,1];
+if tempu>tempv;
+kdraw[i,1]=kvals[j,1];
+break;
+endif;
+endfor;
+
+gat = kdraw[i,1]*sigv;
+rt = ht'ft*vtm1*ft'ht + ht'gat*gat'ht + capg[(i-1)*p+1:i*p,.]*capg[(i-1)*p+1:i*p,.]';
+rtinv=invpd(rt);
+jt = (ft*vtm1*ft'ht + gat*gat'ht)*rtinv;
+mtm1 = (eye(kstate) - jt*ht')*(f[.,i] + ft*mtm1) + jt*(yg[.,i] - gg[.,i]);
+vtm1 = ft*vtm1*ft' + gat*gat' - jt*rt*jt';
+
+
+
+endfor;
+
+retp(kdraw);
+endp;
+
+
+
+
+
+@gkc.prg modified to handle stochastic volatility case (i.e. mean and variance depend on sdraw)@
+proc gck1(yg,gg,hh,f, capf, sigv,kold,t,ex0,vx0,nvalk,kprior,kvals,p,kstate,sdraw);
+local jumpout,kdraw,i,j,ic,omega,btplus1,gatplus1,htplus1,cgtplus1,ftplus1,ctplus1,dtplus1,rtplus1,atplus1,cct,cplus1,tempu,temps,tempv,otplus1,
+mi,vi,mu,vtm1,capg,imix,mut,mutplus1,rtinv,satplus1,rt,ht,mt,vt,jt,ft,ot,gat,lpyt,mtm1,lpyt1n,tt,lprob,pprob;
+@Subroutine implements Gerlach, Carter and Kohn (JASA, 2000) and uses their notation@
+@I have set it up so that their K enters only their Gamma matrix (i.e. state equation error covariance)@
+@I have also set it up so that state equation has constant error covariance over time -- except for changepoints@
+@The parts for Gamma matrix should be only part which are application specific@
+@I have tried to follow their notation as far as possible and references to Lemmas and pages refer to this paper@
+@One difference is that I have assumed error in state and measurement equation independent and, thus, used the slightly simpler
+formulation of Giordani and Kohn in their appendices@
+@Inputs: yg = p by t data matrix
+         gg = p by t matrix of det terms in measurement equation (usually set to zeros).
+         hh = tp by m matrix (note that this is transpose of GKCs definition)
+         f = m by t matrix of det terms in the state equation (usually set to zero in my work)
+         capf = tm by m matrix from state equation (set to identies for random walk evolution of states)
+        sigv is the standard deviation (or sigv*sigv') is the state equation error variance when regime change occurs (i.e. Kt=1)
+        sigv will be an m by m matrix 
+         kold is the previous draw of k, which is t by 1 (i.e. this code only allows for one k)
+                t = nunber of observations
+                 kstate = dimensionality of state vector
+                ex0, vx0 = mean and variance for initial values for state equation (m by 1 and m by m)
+                nvalk = number of values k can take on -- usually 2 for 0/1
+                kprior = prior probabilities for each value for k = nvalk by 1 (this is okay for Bernoulli case, but in general may make this nvalk by t)       
+                kvals are the values k can take on -- usually 0/1           
+@
+mi=zeros(7,1);
+vi=zeros(7,1);
+@set the values for the mixing distribution from KSC page 371@
+vi[1,1]=5.79596; vi[2,1] = 2.61369; vi[3,1] = 5.17950; vi[4,1] = 0.16735; vi[5,1] = 0.64009; vi[6,1] = 0.34023; vi[7,1] = 1.26261; 
+mi[1,1]=-10.12999; mi[2,1] = -3.97281; mi[3,1] = -8.56686; mi[4,1] = 2.77786; mi[5,1] = 0.61942; mi[6,1] = 1.79518; mi[7,1] = -1.08819; 
+ 
+
+capg=zeros(t*p,p);
+for i (1,t,1);
+for j (1,p,1);
+imix=sdraw[i,j];
+capg[(i-1)*p+j,j] = sqrt(vi[imix,1]);
+yg[j,i] = yg[j,i] - mi[imix,1] + 1.2704;  
+endfor;
+endfor;
+
+@GCK's Step 1 on page 821@
+mu=zeros(t*kstate,1);
+omega=zeros(t*kstate,kstate);
+gatplus1 = zeros(kstate,kstate);
+for i (t-1,1,-1);
+gatplus1 = sigv*kold[i+1,1];
+ftplus1=capf[kstate*i+1:kstate*(i+1),.];
+cgtplus1=capg[i*p+1:(i+1)*p,.];
+htplus1=hh[i*p+1:(i+1)*p,.]';
+
+rtplus1 = (htplus1'gatplus1)*(htplus1'gatplus1)' + cgtplus1*cgtplus1';
+rtinv=invpd(rtplus1);
+btplus1= gatplus1*gatplus1'htplus1*rtinv;
+atplus1=(eye(kstate) - btplus1*htplus1')*ftplus1;
+if kold[i+1,1]==0;
+ctplus1=zeros(kstate,kstate);
+else;
+cct = gatplus1*(eye(kstate) - gatplus1'htplus1*rtinv*htplus1'gatplus1)*gatplus1';
+ctplus1=chol(cct)';
+endif;
+otplus1 = omega[kstate*i+1:kstate*(i+1),.];
+dtplus1 = ctplus1'otplus1*ctplus1 + eye(kstate);
+omega[kstate*(i-1)+1:kstate*i,.] = atplus1'(otplus1 - otplus1*ctplus1*invpd(dtplus1)*ctplus1'otplus1)*atplus1
++ftplus1'htplus1*rtinv*htplus1'ftplus1;
+satplus1 = (eye(kstate) - btplus1*(htplus1'))*f[.,i+1] - btplus1*gg[.,i+1];
+mutplus1=mu[kstate*i+1:kstate*(i+1),.];
+mu[kstate*(i-1)+1:kstate*i,.] = atplus1'(eye(kstate) - otplus1*ctplus1*invpd(dtplus1)*ctplus1')*(mutplus1 -
+otplus1*(satplus1 + btplus1*yg[.,i+1])) + ftplus1'htplus1*rtinv*(yg[.,i+1] - gg[.,i+1] - htplus1'f[.,i+1]);  
+endfor;
+
+@GCKs Step 2 on pages 821-822@
+kdraw=kold;
+ht=hh[1:p,.]';
+ft=capf[1:kstate,.];
+gat=zeros(kstate,kstate);
+@Note: this specification implies no shift in first period -- sensible@
+rt = ht'ft*vx0*ft'ht + ht'gat*gat'ht+ capg[1:p,.]*capg[1:p,.]';
+rtinv=invpd(rt);
+jt = (ft*vx0*ft'ht + gat*gat'ht)*rtinv;
+mtm1 = (eye(kstate) - jt*ht')*(f[.,1] + ft*ex0) + jt*(yg[.,1] - gg[.,1]);
+vtm1 = ft*vx0*ft'+ gat*gat' - jt*rt*jt';
+lprob=zeros(nvalk,1);
+for i (2,t,1);
+ht=hh[(i-1)*p+1:i*p,.]';
+ft=capf[kstate*(i-1)+1:kstate*i,.];
+for j (1,nvalk,1);
+gat = kvals[j,1]*sigv;
+rt = ht'ft*vtm1*ft'ht + ht'gat*gat'ht + capg[(i-1)*p+1:i*p,.]*capg[(i-1)*p+1:i*p,.]';
+rtinv=invpd(rt);
+jt = (ft*vtm1*ft'ht + gat*gat'ht)*rtinv;
+mt = (eye(kstate) - jt*ht')*(f[.,i] + ft*mtm1) + jt*(yg[.,i] - gg[.,i]);
+vt = ft*vtm1*ft' + gat*gat' - jt*rt*jt';
+
+
+lpyt = -.5*ln(det(rt)) - .5*(yg[.,i] - gg[.,i] - ht'(f[.,i] + ft*mtm1))'rtinv*(yg[.,i] - gg[.,i] - ht'(f[.,i] + ft*mtm1));
+if det(vt)<=0;
+tt=zeros(kstate,kstate);
+else;
+tt = chol(vt)';
+endif;
+ot=omega[kstate*(i-1)+1:kstate*i,.];
+mut=mu[kstate*(i-1)+1:kstate*i,.];
+tempv=eye(kstate) + tt'ot*tt;
+lpyt1n=-.5*ln(det(tempv)) -.5*(mt'ot*mt - 2*mut'mt - (mut - ot*mt)'tt*invpd(tempv)*tt'(mut - ot*mt));
+lprob[j,1] = ln(kprior[j,1]) + lpyt1n + lpyt;
+
+endfor;
+pprob=exp(lprob)./sumc(exp(lprob));
+
+tempv=rndu(1,1);
+tempu=0;
+for j (1,nvalk,1);
+tempu=tempu+pprob[j,1];
+if tempu>tempv;
+kdraw[i,1]=kvals[j,1];
+break;
+endif;
+endfor;
+
+gat = kdraw[i,1]*sigv;
+rt = ht'ft*vtm1*ft'ht + ht'gat*gat'ht + capg[(i-1)*p+1:i*p,.]*capg[(i-1)*p+1:i*p,.]';
+rtinv=invpd(rt);
+jt = (ft*vtm1*ft'ht + gat*gat'ht)*rtinv;
+mtm1 = (eye(kstate) - jt*ht')*(f[.,i] + ft*mtm1) + jt*(yg[.,i] - gg[.,i]);
+vtm1 = ft*vtm1*ft' + gat*gat' - jt*rt*jt';
+
+
+
+endfor;
+
+retp(kdraw);
+endp;
+
+
+
+/******For computing the SDDR for each t *****************************************/
+proc 1 = calc_SDDR(R,phat,pie,Vt,c);
+local p,u,s,v,bigA,rr,vl,lhat;
+/***  If estimating the rank of a VAR
+pie =reshape(R*a,3,3)'-c;
+phat=vec(reshape(R*m,3,3)'-c);
+vt=R*vt*R';
+*****************************/
+p={};
+pie =reshape(pie,3,3);
+{u,s,v}=svd1(pie);
+
+for rr (0,3,1);
+if rr == 0;
+p=-1/2*(ln(det(vt)+(2*pi)^9))-.5*phat'inv(vt)*phat;
+elseif rr == 3; p=p~0;
+else;
+bigA=v[.,rr+1:3].*.u[.,rr+1:3];
+vl=inv(bigA'inv(vt)*bigA);
+lhat=phat-vec(u[.,1:rr]*s[1:rr,1:rr]*v[.,1:rr]');
+lhat=vl*bigA'inv(vt)*lhat;
+p=p~(-1/2*(ln(det(vl)+(2*pi)^((3-rr)*(3-rr)))-.5*lhat'inv(vl)*lhat));
+endif;
+endfor;
+retp(p);
+endp;
+
+proc 1 = calc_GCSDDR(m,Vt);
+local p,pie,phat,u,s,v,bigA,rr,vl,lhat;
+
+  p=-1/2*(ln(det(Vt))+ln(2*pi)*rows(m)+m'inv(vt)*m);
+
+retp(p);
+endp;
+
+
+/*******************************************************************
+Command:  ttp = get_GIRF(b,is,a);
+Purpose:  Calculate the Variance decomposition for the current time period.
+Inputs:   b  -- nr x 1 current draw of the cointegrating vectors.
+          is -- current draw of the inverse of the covariance matrix.
+          a  -- (nr+current draw of alpha and lag coefficients.
+Outputs:  ttp -- proportion of variance that is temporary at time t
+*******************************************************************/
+proc 1 = get_VarDec(b,is,a,r);
+local w0, w1, m, kv, n, g, wk, z, zi, o1, onm, i, j, C, Ci, Cz, lgs, Tz, Tzi, u, s, v, asa;
+
+ w1=pi/4; w0=pi/16; m=199; kv=seqa(0,1,m+1);
+
+ n=cols(is);  a=a[n+1:rows(a)]; lgs=(rows(a)-n*r)/n/n;
+
+ g = eye(n)~reshape(a[n*r+1:rows(a)],n,lgs*n);
+ a=reshape(a[1:n*r],n,r);
+ b=reshape(b,n,r);
+
+ wk=((pi/16)*(1-kv/199)+(pi/4)*(kv/199));
+ z=exp(-sqrt(-1)*wk); zi=exp(sqrt(-1)*wk);
+
+ o1=seqa(0,1,2);  onm=ones(n,n);
+ Tz = 0; Cz = 0;
+ i=1; do until i > m;
+
+  C = (((1-z[i])*g*((z[i]^o1).*.onm))-a*b'z[i]);
+  {u,s,v}=svd1(C);  C=u*inv(s)*v';
+
+  Ci= (((1-zi[i])*g*((zi[i]^o1).*.onm))-a*b'zi[i]);
+  {u,s,v}=svd1(Ci); Ci=u*inv(s)*v';
+
+  asa=a'is*a; {uv,sv,vv}=svd1(asa);
+  Tz = Tz + diag(C*a*uv*inv(sv)*vv'a'Ci')';
+  Cz = Cz + diag(C*inv(is)*Ci')';
+ i=i+1; endo; 
+
+retp(real(Tz./Cz));
+endp;
+
+proc (1)=raiz(matriz);
+ /*It calculates the square root of a matrix */
+local aux1,  vect, valu, aux2, mira, aux3, aux4;
+{valu,vect}=eighv(matriz);
+aux2=diagrv(eye(rows(matriz)),sqrt(valu.*valu));
+aux1=vect*sqrt(aux2)*inv(vect);
+aux1=vect*sqrt(aux2)*vect';
+mira=imag(valu);
+aux4=zeros(rows(mira),1);
+aux3=mira./=aux4;
+aux3=sumc(aux3);
+retp(aux1);
+endp;
+
+proc (1)=EFdrawiwish2(fredom, matr);
+local draw,dim, diego, di, ii;
+dim=rows(matr);
+draw=zeros(dim,dim);
+ii=dim;
+diego=2*rndgam(1,1,fredom/2);
+diego=1/sqrt(diego);
+draw[ii,ii]=diego;
+for ii (dim-1,1,-1);
+diego=2*rndgam(1,1,(fredom+ii-dim)/2);
+diego=1/sqrt(diego);
+draw[ii,ii]=diego;
+draw[ii+1:dim ,ii]=diego*rndn(dim-ii,1);
+endfor;
+draw=draw*draw';
+di=(raiz(matr))';
+draw=(di'*draw*di);
+retp(draw);
+endp;
