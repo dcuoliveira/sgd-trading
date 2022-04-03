@@ -28,7 +28,7 @@ Offsetc=1;
 truncbelow=0.999;
 everyk=1;      /* Get only one every 'everyk' iterations */
 constante=1;   /* it is 0 if there is no constant in the model */
-timrun=hsec;  nrep=36000;  nburn=10;
+timrun=hsec;  nrep=100;  nburn=10;
 /* p is the dimensionality of y*/
 p = 2;
 /* plag is number of lags in the VAR*/
