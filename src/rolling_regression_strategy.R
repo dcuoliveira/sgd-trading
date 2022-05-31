@@ -11,8 +11,7 @@ source(here('src', 'models.R'))
 source(here('src', 'plot_funcs.R'))
 
 MODEL = "rolling_reg"
-MODEL_TYPE = "lookahead_bias"
-OUTPUT_PATH = here("src", "data", "outputs", "models", MODEL, MODEL_TYPE)
+OUTPUT_PATH = here("src", "data", "outputs", "models", MODEL)
 WINDOW_SIZE = 52 * 4
 MEAN_WINDOW_SIZE = 52 * 1
 INTERCEPT = FALSE
