@@ -1,4 +1,8 @@
+# R and RStudio
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+
+# Vscoe
+.DS_Store

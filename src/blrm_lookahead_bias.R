@@ -45,7 +45,7 @@ fitted_df = data.frame(date=date,
                        rollingstd=rollapply(bnlr$fitted.values, 30, sd, fill=NA),
                        cointerror=bnlr$residuals)
 
-plot(fitted_df$date, fitted_df$cointerror, type = 'l', col = 'red')
+plot(fitted_df$date, scale(fitted_df$cointerror), type = 'l', col = 'red')
 par(new = 'T')
 plot(fitted_df$date, fitted_df$fittedsgd, type = 'l', col = 'black')
 par(new = 'T')
