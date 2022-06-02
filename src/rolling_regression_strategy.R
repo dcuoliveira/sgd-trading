@@ -40,10 +40,11 @@ coefs_df <- rollingreg$coefs
 coef_names <- colnames(coefs_df %>% select(-date))
 
 # target positions
-positions_df <- positions_df %>% mutate(target_position := ifelse(!!sym(paste0(TARGET, "_zscore")) > threshold, 1,
-                                                                 ifelse(!!sym(paste0(TARGET, "_zscore")) < -threshold,
-                                                                        -1,
-                                                                        0)))
+positions_df <- positions_df %>% mutate(target_position := ifelse(!!sym(paste0(TARGET, "_zscore")) > threshold,
+                                                                  1,
+                                                                  ifelse(!!sym(paste0(TARGET, "_zscore")) < -threshold,
+                                                                         -1,
+                                                                         0)))
 
 # covariates positions
 merge_coefs_df <- merge(positions_df, coefs_df, by = "date")
