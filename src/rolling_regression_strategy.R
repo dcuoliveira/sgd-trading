@@ -41,9 +41,9 @@ coef_names <- colnames(coefs_df %>% select(-date))
 
 # target positions
 positions_df <- positions_df %>% mutate(target_position := ifelse(!!sym(paste0(TARGET, "_zscore")) > threshold,
-                                                                  1,
+                                                                  -1,
                                                                   ifelse(!!sym(paste0(TARGET, "_zscore")) < -threshold,
-                                                                         -1,
+                                                                         1,
                                                                          0)))
 
 # covariates positions
@@ -71,5 +71,5 @@ output_df$portfolio <- sum(output_df %>% select(-date))
 cumprod_output_df <- cumprod(1+(output_df %>% select(-date))) %>% as.data.table() %>% mutate(date=output_df$date) %>%
   select(date, everything())
 
-melt_cumprod_output_df <- melt(cumprod_output_df, id="date")
+melt_cumprod_output_df <- melt(cumprod_output_df %>% select(-portfolio), id="date")
 ggplot(melt_cumprod_output_df, aes(x=date, y=value, colour=variable, group=variable)) + geom_line()
