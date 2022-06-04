@@ -15,14 +15,14 @@ MODEL <- "rolling_reg"
 OUTPUT_PATH <- here("src", "data", "outputs", "models", MODEL)
 WINDOW_SIZE <- 52 * 4
 MEAN_WINDOW_SIZE <- 52 * 1
-INTERCEPT <- FALSE
+INTERCEPT <- TRUE
 TARGET <- "SGD"
 
-data <- merge_fx_sneer_data()
-# data <-  data %>% select(-date) %>% apply(2, function(x) scale(x)) %>% as.data.frame()
+data <- merge_fx_sneer_data() data %>% filter(date >= "2006-01-01")
+data <-  data %>% select(-date) %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
 if (INTERCEPT == T){
-  model_formula <- paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + "))
+  model_formula <- paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + "), "+1")
 }else{
   model_formula <- paste(paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + ")), " -1")
 }
