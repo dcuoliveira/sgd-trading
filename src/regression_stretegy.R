@@ -37,7 +37,9 @@ resid <- reg$residuals %>% as.data.table() %>%
   select(date, everything())
 ggplot(resid, aes(x = date, y = resid_zscore)) + geom_line()
 
-
+diff_df = data_orig %>% select(date, SGD) %>%
+  mutate(SGD_log_diff=c(NA, diff(log(SGD))), resid=resid$resid, resid_diff=c(NA, diff(resid)))
+ggplot(diff_df, aes(x=resid_diff, y=lag(SGD_log_diff, n = 1))) + geom_point() + geom_smooth(method=lm)
 
 
 

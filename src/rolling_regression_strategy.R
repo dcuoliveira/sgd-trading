@@ -6,6 +6,7 @@ library("tidyr")
 library("data.table")
 library("roll")
 library("rlang")
+library("hrbrthemes")
 
 source(here('src', 'utils.R'))
 source(here('src', 'models.R'))
@@ -34,16 +35,22 @@ rollingreg <- roll_reg_prop(formula = model_formula,
                             do_compute=c("sigmas", "r.squareds", "1_step_forecasts"))
 
 threshold <- 1.5
-positions_df <- rollingreg$resids
+resids_df <- rollingreg$resids
 coefs_df <- rollingreg$coefs
 coef_names <- colnames(coefs_df %>% select(-date))
 
+library('gridExtra')
+resid_sgd_df = resids_df %>% mutate(SGD=data$SGD[WINDOW_SIZE:length(data$SGD)]) %>% select(date, SGD_resid_zscore, SGD)
+plt1 = ggplot(data = resid_sgd_df, aes(x = date, y = SGD_resid_zscore)) + geom_line()
+plt2 = ggplot(data = resid_sgd_df, aes(x = date, y = SGD)) + geom_line()
+grid.arrange(plt1, plt2, nrow=2)
+
 # target positions
-positions_df <- positions_df %>% mutate(target_position := ifelse(!!sym(paste0(TARGET, "_zscore")) > threshold,
-                                                                  -1,
-                                                                  ifelse(!!sym(paste0(TARGET, "_zscore")) < -threshold,
-                                                                         1,
-                                                                         0)))
+positions_df <- resids_df %>% mutate(target_position := ifelse(!!sym(paste0(TARGET, "_zscore")) > threshold,
+                                                               -1,
+                                                               ifelse(!!sym(paste0(TARGET, "_zscore")) < -threshold,
+                                                                      1,
+                                                                      0)))
 
 # covariates positions
 merge_coefs_df <- merge(positions_df, coefs_df, by = "date")
