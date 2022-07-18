@@ -1,6 +1,5 @@
 rm(list=ls())
 library("rollRegres")
-library('here')
 library('dplyr')
 library("tidyr")
 library("data.table")
@@ -8,12 +7,12 @@ library("roll")
 library("rlang")
 library("hrbrthemes")
 
-source(here('src', 'utils.R'))
-source(here('src', 'models.R'))
-source(here('src', 'plot_funcs.R'))
+source(file.path(getwd(), 'src', 'models', 'utils.R'))
+source(file.path(getwd(), 'src', 'models', 'models.R'))
+source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
-MODEL <- "rolling_reg"
-OUTPUT_PATH <- here("src", "data", "outputs", "models", MODEL)
+MODEL <- "rolling_lm"
+OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
 WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
@@ -33,3 +32,7 @@ rollingreg <- roll_reg_prop(formula = model_formula,
                             reg_window_size = WINDOW_SIZE,
                             mean_window_size = MEAN_WINDOW_SIZE,
                             do_compute=c("sigmas", "r.squareds", "1_step_forecasts"))
+
+dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
+saveRDS(rollingreg, file.path(OUTPUT_PATH, "model_results.rds"))
+

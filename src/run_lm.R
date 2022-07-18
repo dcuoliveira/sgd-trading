@@ -1,5 +1,4 @@
 rm(list=ls())
-library('here')
 library('dplyr')
 library("tidyr")
 library("data.table")
@@ -7,13 +6,13 @@ library("roll")
 library("rlang")
 library("reshape2")
 
-source(here('src', 'utils.R'))
-source(here('src', 'models.R'))
-source(here('src', 'plot_funcs.R'))
+source(file.path(getwd(), 'src', 'models', 'utils.R'))
+source(file.path(getwd(), 'src', 'models', 'models.R'))
+source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
-MODEL <- "reg"
-OUTPUT_PATH <- here("src", "data", "outputs", "models", MODEL)
-WINDOW_SIZE <- 52 * 4
+MODEL <- "lm"
+OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
+WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
 TARGET <- "SGD"
@@ -29,17 +28,10 @@ if (INTERCEPT == T){
 }
 
 reg <- lm(model_formula, data)
-summary(reg)
 
-resid <- reg$residuals %>% as.data.table() %>%
-  rename(resid := .) %>%
-  mutate(date=data_orig$date, resid_zscore=scale(resid)) %>%
-  select(date, everything())
-ggplot(resid, aes(x = date, y = resid_zscore)) + geom_line()
+dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
+saveRDS(reg, file.path(OUTPUT_PATH, "model_results.rds"))
 
-diff_df = data_orig %>% select(date, SGD) %>%
-  mutate(SGD_log_diff=c(NA, diff(log(SGD))), resid=resid$resid, resid_diff=c(NA, diff(resid)))
-ggplot(diff_df, aes(x=resid_diff, y=lag(SGD_log_diff, n = 1))) + geom_point() + geom_smooth(method=lm)
 
 
 
