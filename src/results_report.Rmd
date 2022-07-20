@@ -4,14 +4,27 @@ output: html_notebook
 ---
 
 ```{r}
+rm(list=ls())
 library('dplyr')
 library('ggplot2')
 ```
 
-
+# 1) Rolling regression model
 
 ```{r}
+model <- 'rolling_lm'
+path_rolling_lm <- file.path(getwd(), 'data', 'outputs', model, "model_results.rds")
 
+rolling_lm <- readRDS(path_rolling_lm)
+coefs_df <- rolling_lm$coefs
+resid_df <- rolling_lm$resids
+fit_df <- rolling_lm$fits
+```
+
+## (a) Check if rolling coefficients make sense with macro data
+
+```{r}
+trade_df <- NULL
 ```
 
 
