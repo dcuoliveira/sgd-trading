@@ -17,7 +17,7 @@ WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
 TARGET <- "SGD"
-SCALE_TYPE <- ""
+SCALE_TYPE <- "rolling_scale"
 
 data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 
@@ -34,7 +34,7 @@ rollingreg <- roll_reg_prop(formula = model_formula,
                             mean_window_size = MEAN_WINDOW_SIZE,
                             scale_type = SCALE_TYPE,
                             do_compute=c("sigmas", "r.squareds", "1_step_forecasts"))
-
+browser()
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(rollingreg, file.path(OUTPUT_PATH, paste0("model_results", SCALE_TYPE, ".rds")))
+saveRDS(rollingreg, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
 

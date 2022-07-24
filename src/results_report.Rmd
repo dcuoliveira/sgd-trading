@@ -7,24 +7,70 @@ output: html_notebook
 rm(list=ls())
 library('dplyr')
 library('ggplot2')
+source("https://gist.githubusercontent.com/ellisp/4002241def4e2b360189e58c3f461b4a/raw/e959562be9e7a4d919a9c454d8b1b70cde904ab0/dualplot.R")     
+
+INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
 ```
+
+# 0) Load share of imports/exports
+
+```{r}
+trade_data <- read.csv(file.path(INPUT_PATH, "currencies_trade_data.csv"))
+trade_dict <- read.csv(file.path(INPUT_PATH, "currencies_trade_dict.csv"))
+
+trade_dict %>% filter(currency=="KRW Curncy")
+tail(trade_data)
+```
+
+```{r}
+target_trade_data <- trade_data %>% filter((ticker == "KOEXTOTY Index")|(ticker == "KOIMTOTY Index"))
+pivot_target_trade_data <- dcast(target_trade_data, date ~ ticker, value.var = "value")
+
+sum_target_trade_data <- target_trade_data %>% group_by(date, currency) %>% summarise(sum=sum(value)) %>%
+  ungroup() %>% select(date, sum) %>% as.data.table() %>% mutate(date=ymd(date))
+tail(sum_target_trade_data)
+```
+
 
 # 1) Rolling regression model
 
+## (a) Scale
+
 ```{r}
 model <- 'rolling_lm'
-path_rolling_lm <- file.path(getwd(), 'data', 'outputs', model, "model_results.rds")
+scale_type <- 'scale'
+path_rolling_lm <- file.path(getwd(), 'data', 'outputs', model, paste0("model_results_", scale_type, ".rds"))
 
 rolling_lm <- readRDS(path_rolling_lm)
 coefs_df <- rolling_lm$coefs
-resid_df <- rolling_lm$resids
-fit_df <- rolling_lm$fits
+
+target_coefs_df <- coefs_df %>% select(date, KRW) %>% mutate(date=ymd(date))
+setkey(target_coefs_df, date)
+setkey(sum_target_trade_data, date)
+
+scale_compare_data <- target_coefs_df[sum_target_trade_data, roll = "nearest" ] %>% drop_na()
+plot(scale_compare_data$KRW, type = "l", col = "blue")
+par(new = T)
+plot(scale_compare_data$sum, type = "l")
 ```
 
-## (a) Check if rolling coefficients make sense with macro data
+## (b) Rolling scale
 
 ```{r}
-trade_df <- NULL
+model <- 'rolling_lm'
+scale_type <- 'rolling_scale'
+path_rolling_lm <- file.path(getwd(), 'data', 'outputs', model, paste0("model_results_", scale_type, ".rds"))
+
+rolling_lm2 <- readRDS(path_rolling_lm)
+coefs_df2 <- rolling_lm2$coefs
+
+target_coefs_df2 <- coefs_df2 %>% select(date, KRW) %>% mutate(date=ymd(date))
+setkey(target_coefs_df2, date)
+
+rolling_scale_compare_data <- target_coefs_df2[sum_target_trade_data, roll = "nearest" ] %>% drop_na()
+plot(rolling_scale_compare_data$KRW, type = "l", col = "red")
+par(new = T)
+plot(rolling_scale_compare_data$sum, type = "l")
 ```
 
 
