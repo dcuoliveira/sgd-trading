@@ -1,4 +1,4 @@
-Currency,Event,Ticker
+currency,Event,ticker
 KRW Curncy,Exports 20 Days YoY,KOTBEXPY Index
 KRW Curncy,Imports 20 Days YoY,KOTBIMPY Index
 KRW Curncy,Exports YoY,KOEXTOTY Index
@@ -62,15 +62,3 @@ EUR Curncy,ECB Current Account SA,EUSATOTN Index
 SGD Curncy,Non-oil Domestic Exports SA MoM,STRDNODC Index
 SGD Curncy,Non-oil Domestic Exports YoY,SIEXNON% Index
 SGD Curncy,Electronic Exports YoY,SIEXEYOY Index
-KRW Curncy,Singapore Imports from South K,SIMCKREA Index
-MYR  Curncy,Singapore Imports from Malaysi,SIMCMALY Index
-CNY Curncy,Singapore Imports from China,SIMCCHNA Index
-THB  Curncy,Singapore Imports from Thailan,SIMCTHAI Index
-IDR Curncy,Singapore Imports to India,SIMCINDI Index
-INR Curncy,Singapore Imports from Indones,SIMCINDO Index
-TWD Curncy,Singapore Imports from Taiwan,SIMCTAIW Index
-JPY Curncy,Singapore Imports from Japan,SIMCJAPN Index
-EUR Curncy,Singapore Imports from EU,SIMCEU Index
-AUD Curncy,Singapore Imports from Austral,SIMCAUST Index
-GBP Curncy,Singapore Imports from UK,SIMCUK Index
-USD Curncy,Singapore Imports from USA,SIMCUSA Index
