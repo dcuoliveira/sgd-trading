@@ -44,12 +44,27 @@ tail(coefs_df)
 
 ```{r}
 mixed_freq_df <- merge(target_coefs_df , pivot_target_trade_data, by = "date", all.x = TRUE)
+melted_mixed_freq_df <- melt(mixed_freq_df, id.vars = "date")
 tail(mixed_freq_df)
+tail(melted_mixed_freq_df)
 ```
+
 Plot mixed frequency multivariate time series:
 
-```{r}
-trade_dict %>% filter(currency=="MYR Curncy")
 
+```{r}
+melted_mixed_freq_df %>%
+  ggplot(aes(date,
+             value,
+             color = variable,
+             group = variable)) +
+  geom_line() +
+  geom_point(data = filter(total, !is.na(MP) | !is.na(DESCRIPTION))) +
+  theme_bw() +
+  theme(legend.position = 'top')+
+  labs(title = glue::glue("Number of Users over time."),
+       subtitle = glue::glue("Interval window of days."),
+       y = "",
+       x = "")
 ```
 
