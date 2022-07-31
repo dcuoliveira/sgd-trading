@@ -7,7 +7,6 @@ output: html_notebook
 rm(list=ls())
 library('dplyr')
 library('ggplot2')
-source("https://gist.githubusercontent.com/ellisp/4002241def4e2b360189e58c3f461b4a/raw/e959562be9e7a4d919a9c454d8b1b70cde904ab0/dualplot.R")     
 
 INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
 ```
