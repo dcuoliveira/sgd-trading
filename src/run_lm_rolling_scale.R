@@ -16,7 +16,7 @@ WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
 TARGET <- "SGD"
-SCALE_TYPE <- "scale"
+SCALE_TYPE <- "rolling_scale"
 
 data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
@@ -44,7 +44,7 @@ if (SCALE_TYPE == "scale"){
 reg <- lm(model_formula, data)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(reg, file.path(OUTPUT_PATH, "model_results.rds"))
+saveRDS(reg, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
 
 
 
