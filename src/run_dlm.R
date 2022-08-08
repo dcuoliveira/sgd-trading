@@ -5,12 +5,13 @@ library("data.table")
 library("roll")
 library("rlang")
 library("reshape2")
+library("dlm")
 
 source(file.path(getwd(), 'src', 'models', 'utils.R'))
 source(file.path(getwd(), 'src', 'models', 'models.R'))
 source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
-MODEL <- "lm"
+MODEL <- "dlm"
 OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
 WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
@@ -41,10 +42,35 @@ if (SCALE_TYPE == "scale"){
   data <- data %>% drop_na()
 }
 
-reg <- lm(model_formula, data)
+y <- data[,TARGET]
+X <- data %>% select(-!!(TARGET), -SNEER)
+
+# MLE estimates of the variance
+lm_model <- lm(formula = model_formula,
+               data = data)
+batas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
+residual_variance <- ((summary(lm_model)$sigma)) ** 2
+
+# DLM specs
+m <- NCOL(X)
+dlm_model <- dlmModReg(X)
+dlm_model$FF <- dlm_model$FF
+dlm_model$GG <- dlm_model$GG 
+dlm_model$W <- diag(batas_variaces)
+dlm_model$V <- residual_variance 
+dlm_model$m0 <- rep(0,2 * m)
+dlm_model$C0 <- diag(1e7, nr = 2 * m)
+
+# DLM estimate
+dlm_filter <- dlmFilter(y, dlm_model)
+dlm_smooth <- dlmSmooth(dlm_filter)
+dlm_filter_residual <- residuals(dlm_filter)
+
+dlmout <- list(filter=dlm_filter,
+               smooth=dlm_smooth)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(reg, file.path(OUTPUT_PATH, "model_results.rds"))
+saveRDS(dlmout, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
 
 
 

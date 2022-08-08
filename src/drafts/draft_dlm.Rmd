@@ -1,0 +1,158 @@
+---
+title: "Draft DLM"
+output: html_notebook
+---
+
+
+```{r}
+
+rm(list=ls())
+library('dplyr')
+library("tidyr")
+library("data.table")
+library("roll")
+library("rlang")
+library("reshape2")
+library("dlm")
+
+source(file.path(getwd(), 'models', 'utils.R'))
+source(file.path(getwd(), 'models', 'models.R'))
+source(file.path(getwd(), 'plots', 'plot_funcs.R'))
+
+MODEL <- "lm"
+INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
+OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
+WINDOW_SIZE <- 52 * 2
+MEAN_WINDOW_SIZE <- 52 * 1
+INTERCEPT <- TRUE
+TARGET <- "SGD"
+SCALE_TYPE <- "rolling_scale"
+
+data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data_orig <- data
+data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
+
+if (INTERCEPT == T){
+  model_formula <- paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + "), "+1")
+}else{
+  model_formula <- paste(paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + ")), " -1")
+}
+
+if (SCALE_TYPE == "scale"){
+  data <- data %>% lapply(scale) %>% as.data.table()
+  row.names(data) <- data_orig$date
+}else if (SCALE_TYPE == "rolling_scale"){
+  n <- dim(data)[1]
+  mean_data <- apply(data, 2, function(x) {roll_mean(x, width = n, min_obs = WINDOW_SIZE)})
+  sd_data <- apply(data, 2, function(x) {roll_sd(x, width = n, min_obs = WINDOW_SIZE)})
+  
+  data <- ((data - mean_data) / sd_data)
+  row.names(data) <- data_orig$date
+  data <- data %>% drop_na()
+}
+
+```
+
+Petris (2007) original model for each asset i, i=1,..,m, we have:
+
+$$
+y_{ti} = \alpha_{ti} + \beta_{ti}x_t + v_{ti} \\
+\alpha_{ti} = \alpha_{t-1,i} + w_{t1}^{i} \\
+\beta_{ti} = \beta_{t-1,i} + w_{t2}^{i} \\
+$$
+
+and in matrix notation:
+
+$$
+\textbf{y}_t = (\textbf{F}_t \otimes \textbf{I}_m) \boldsymbol{\theta}_t + \textbf{v}_t \\
+\boldsymbol{\theta}_t = (\textbf{G}_t \otimes \textbf{I}_m) \boldsymbol{\theta}_{t-1} + \textbf{w}_t \\
+$$
+## Using SGD data to simulate PAtris (2008) example:
+
+```{r}
+X <- data %>% select(-!!(TARGET), -SNEER)
+assets_t <- X[,1:4]
+market_t <- data[,TARGET]
+
+m <- NCOL(assets_t)
+dlm_model <- dlmModReg(market_t)
+dlm_model$FF <- dlm_model$FF %x% diag(m)
+dlm_model$GG <- dlm_model$GG %x% diag(m)
+dlm_model$JFF <- dlm_model$JFF %x% diag(m)
+dlm_model$W <- dlm_model$W %x% matrix(0,m,m)
+
+dlm_model$FF
+dlm_model$GG
+```
+
+## Now to the singapore model ...
+
+First, we estimate the variance and coveriaces to set the $V$ and $W$ matrices
+
+```{r}
+X <- data %>% select(-!!(TARGET), -SNEER)
+y <- data[,TARGET]
+
+# MLE estimates of the variance
+lm_model <- lm(formula = model_formula,
+               data = data)
+batas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
+residual_variance <- ((summary(lm_model)$sigma)) ** 2
+```
+
+Then we specify the signal and state equations. Finally, we use the filter and smooth function to estimate the DLM parameters: 
+
+```{r}
+m <- NCOL(X)
+dlm_model <- dlmModReg(X)
+dlm_model$FF <- dlm_model$FF
+dlm_model$GG <- dlm_model$GG 
+dlm_model$W <- diag(batas_variaces)
+dlm_model$V <- residual_variance 
+
+dlm_model$m0 <- rep(0,2 * m)
+dlm_model$C0 <- diag(1e7, nr = 2 * m)
+
+dlm_filter <- dlmFilter(y, dlm_model)
+dlm_smooth <- dlmSmooth(dlm_filter)
+dlm_filter_residual <- residuals(dlm_filter)
+```
+
+```{r}
+row.names(X)[131]
+```
+
+
+```{r}
+ts.plot(scale(dlm_filter_residual$res[1:length(dlm_filter_residual$res)]))
+```
+
+
+```{r}
+dlm_filter$m <- dlm_filter$m %>% as.data.table() 
+colnames(dlm_filter$m) <- names(batas_variaces)
+
+dlm_smooth$s <- dlm_smooth$s %>% as.data.table() 
+colnames(dlm_smooth$s) <- names(batas_variaces)
+dlm_smooth$s <- dlm_smooth$s[2:dim(dlm_smooth$s),]
+dlm_smooth$s$date <- ymd(row.names(X))
+
+trade_data <- read.csv(file.path(INPUT_PATH, "currencies_trade_data.csv"))
+```
+
+
+```{r}
+ccy_trade_df <- trade_data %>% filter((currency=="CNY Curncy")&(field=="CHCUCAB Index")) %>% dcast(date ~ field, value.var = "value")
+
+ccy_trade_df$date <- ymd(ccy_trade_df$date)
+target_dlm_smooth <- dlm_smooth$s %>% select(date, CNY)
+setkey(target_dlm_smooth, date)
+
+compare_df <- target_dlm_smooth[ccy_trade_df, roll = "nearest" ] %>% drop_na()
+
+plot(compare_df$CNY, type = "l", col = "red")
+par(new = T)
+plot(compare_df$`CHCUCAB Index`, type = "l")
+```
+
+

@@ -82,4 +82,3 @@ par(new = T)
 plot(rolling_scale_compare_data$sum, type = "l")
 ```
 
-
