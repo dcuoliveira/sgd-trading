@@ -1,0 +1,22 @@
+---
+title: "FGV-EEPGE Macro presentation plots"
+output: html_notebook
+---
+
+```{r}
+rm(list=ls())
+library('dplyr')
+library('ggplot2')
+
+source(file.path(getwd(), 'plots', 'plot_funcs.R'))
+
+INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
+```
+
+# Load MAS interventions, exchange rates, trade balance data and DLM betas datasets
+
+```{r}
+
+```
+
+
