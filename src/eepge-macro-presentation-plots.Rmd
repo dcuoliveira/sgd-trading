@@ -9,11 +9,15 @@ library('dplyr')
 library('ggplot2')
 library("readxl")
 library("lubridate")
+library('padr')
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
+source(file.path(getwd(), 'models', 'utils.R'))
 
 INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
+OUTPUT_PATH <- file.path(getwd(), "data", "outputs")
 UTILS_PATH <- file.path(getwd(), 'data', 'utils')
+PPT_OUTPUT_PATH <- file.path(OUTPUT_PATH, "eepge-macro-presentation")
 ```
 
 # Load MAS interventions, exchange rates, trade balance data and DLM betas datasets
@@ -33,7 +37,7 @@ betas_df <- rolling_dlm$smooth$s
 # Make the proper adjustments on column names, date format etc
 
 ```{r}
-# rename
+# RENAME
 name_list <- list(KRW="Korea",
                   MYR="Malasia",
                   CNY="China",
@@ -59,12 +63,92 @@ for (colname in names(name_list)){
   orig_name <- colnames(betas_df)[grep(paste0("^", colname), colnames(betas_df))]
   betas_df <- betas_df %>% rename(!!new_name := !!orig_name)
 }
-trade_df <- trade_df %>% rename(date=z) %>% mutate(date=ymd(date)) %>% rename("EU"=`Union European`)
+trade_df <- trade_df %>% rename(date=z) %>% mutate(date=ymd(date)) %>% rename("EU"=`Union European`, Australia=Autralia)
+
+# RESAMPLE
+currencies_df <- resample_data(currencies_df)
 ```
 
-# Beta Estimates Slide
+# 1) Beta Estimates
+## DLM estimate vs trade proxy
+
+```{r}
+apply_mean <- TRUE
+apply_zscore <- TRUE
+
+for (colname in colnames(betas_df %>% select(-date, -intercept))){
+  
+  # select data and merge mixe frequencies
+  tmp_betas_df <- betas_df %>% as.data.table() %>% select(date, sym(colname)) %>%
+    rename(!!paste0(colname, " beta") := !!paste0(colname))
+  tmp_trade_df <- trade_df %>% as.data.table() %>% select(date, sym(colname)) %>%
+    rename(!!paste0(colname, " trade") := !!paste0(colname))
+  setkey(tmp_betas_df, date)
+  
+  if (apply_mean == TRUE){
+    tmp_trade_df <- tmp_trade_df %>%
+      mutate(!!colnames(tmp_trade_df)[2] := roll_mean(!!sym(colnames(tmp_trade_df)[2]), width = 6))
+  }
+  
+  tmp_plot_df <- tmp_betas_df[tmp_trade_df, roll = "nearest" ] %>% drop_na()
+  tmp_plot_date <- tmp_plot_df$date
+  
+  if (apply_zscore == TRUE){
+    tmp_plot_df <- lapply(tmp_plot_df, scale) %>% as.data.table()
+    tmp_plot_df$date <- tmp_plot_date
+    tmp_plot_df <- tmp_plot_df %>% select(date, everything()) 
+    tag <- "_zscore"
+  }
+  else{
+    tag <- ""
+  }
+  
+  # multiaxis plot data
+  plot_img <- ggplot(tmp_plot_df, aes(x=date)) + 
+  geom_line(aes(y=!!sym(colnames(tmp_plot_df)[2]), colour="Beta estimates")) + 
+  geom_line(aes(y=!!sym(colnames(tmp_plot_df)[3]), colour="Trade proxy")) + 
+  scale_y_continuous(name = "", sec.axis = sec_axis(~.*1, name="")) + 
+  ggtitle(colname) 
+  
+  # save plot
+  ggsave(plot = plot_img,
+       filename = file.path(PPT_OUTPUT_PATH, paste0(colname, "_dlm_betas_trade", tag,".png")),
+       width = 12,
+       height = 8,
+       dpi = 100)
+}
+```
 
 ```{r}
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
