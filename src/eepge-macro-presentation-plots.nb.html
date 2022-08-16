@@ -1770,26 +1770,17 @@ pre code {
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucm0obGlzdD1scygpKVxubGlicmFyeSgnZHBseXInKVxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucm0obGlzdD1scygpKVxubGlicmFyeSgnZHBseXInKVxubGlicmFyeSgnZ2dwbG90MicpXG5saWJyYXJ5KFwicmVhZHhsXCIpXG5saWJyYXJ5KFwibHVicmlkYXRlXCIpXG5cbnNvdXJjZShmaWxlLnBhdGgoZ2V0d2QoKSwgJ3Bsb3RzJywgJ3Bsb3RfZnVuY3MuUicpKVxuXG5JTlBVVF9QQVRIIDwtIGZpbGUucGF0aChnZXR3ZCgpLCAnZGF0YScsICdpbnB1dHMnKVxuVVRJTFNfUEFUSCA8LSBmaWxlLnBhdGgoZ2V0d2QoKSwgJ2RhdGEnLCAndXRpbHMnKVxuYGBgIn0= -->
 <pre class="r"><code>rm(list=ls())
-library(&#39;dplyr&#39;)</code></pre>
-<!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiXG5BdHRhY2hpbmcgcGFja2FnZTog4oCYZHBseXLigJlcblxuVGhlIGZvbGxvd2luZyBvYmplY3RzIGFyZSBtYXNrZWQgZnJvbSDigJhwYWNrYWdlOnN0YXRz4oCZOlxuXG4gICAgZmlsdGVyLCBsYWdcblxuVGhlIGZvbGxvd2luZyBvYmplY3RzIGFyZSBtYXNrZWQgZnJvbSDigJhwYWNrYWdlOmJhc2XigJk6XG5cbiAgICBpbnRlcnNlY3QsIHNldGRpZmYsIHNldGVxdWFsLCB1bmlvblxuIn0= -->
-<pre><code>
-Attaching package: ‘dplyr’
+library(&#39;dplyr&#39;)
+library(&#39;ggplot2&#39;)
+library(&quot;readxl&quot;)
+library(&quot;lubridate&quot;)
 
-The following objects are masked from ‘package:stats’:
+source(file.path(getwd(), &#39;plots&#39;, &#39;plot_funcs.R&#39;))
 
-    filter, lag
-
-The following objects are masked from ‘package:base’:
-
-    intersect, setdiff, setequal, union</code></pre>
-<!-- rnb-output-end -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubGlicmFyeSgnZ2dwbG90MicpXG5cbklOUFVUX1BBVEggPC0gZmlsZS5wYXRoKGdldHdkKCksICdkYXRhJywgJ2lucHV0cycpXG5gYGAifQ== -->
-<pre class="r"><code>library(&#39;ggplot2&#39;)
-
-INPUT_PATH &lt;- file.path(getwd(), &#39;data&#39;, &#39;inputs&#39;)</code></pre>
+INPUT_PATH &lt;- file.path(getwd(), &#39;data&#39;, &#39;inputs&#39;)
+UTILS_PATH &lt;- file.path(getwd(), &#39;data&#39;, &#39;utils&#39;)</code></pre>
 <!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
@@ -1798,12 +1789,66 @@ INPUT_PATH &lt;- file.path(getwd(), &#39;data&#39;, &#39;inputs&#39;)</code></pr
 betas datasets</h1>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubWFzX2RlY2lzaW9uc19kZiA8LSByZWFkX2V4Y2VsKGZpbGUucGF0aChVVElMU19QQVRILCBcIm1hc19pbnRlcnZlbnRpb25zLnhsc3hcIikpXG5jdXJyZW5jaWVzX2RmIDwtIHJlYWQuY3N2KGZpbGUucGF0aChJTlBVVF9QQVRILCBcImN1cnJlbmNpZXMuY3N2XCIpKVxudHJhZGVfZGYgPC0gcmVhZF9leGNlbChmaWxlLnBhdGgoSU5QVVRfUEFUSCwgXCJTR0RfcmVsX2ltcF9leHAueGxzeFwiKSlcblxubW9kZWwgPC0gJ2RsbSdcbnNjYWxlX3R5cGUgPC0gJ3JvbGxpbmdfc2NhbGUnXG5wYXRoX3JvbGxpbmdfZGxtIDwtIGZpbGUucGF0aChnZXR3ZCgpLCAnZGF0YScsICdvdXRwdXRzJywgbW9kZWwsIHBhc3RlMChcIm1vZGVsX3Jlc3VsdHNfXCIsIHNjYWxlX3R5cGUsIFwiLnJkc1wiKSlcbnJvbGxpbmdfZGxtIDwtIHJlYWRSRFMocGF0aF9yb2xsaW5nX2RsbSlcbmJldGFzX2RmIDwtIHJvbGxpbmdfZGxtJHNtb290aCRzXG5gYGAifQ== -->
+<pre class="r"><code>mas_decisions_df &lt;- read_excel(file.path(UTILS_PATH, &quot;mas_interventions.xlsx&quot;))
+currencies_df &lt;- read.csv(file.path(INPUT_PATH, &quot;currencies.csv&quot;))
+trade_df &lt;- read_excel(file.path(INPUT_PATH, &quot;SGD_rel_imp_exp.xlsx&quot;))
+
+model &lt;- &#39;dlm&#39;
+scale_type &lt;- &#39;rolling_scale&#39;
+path_rolling_dlm &lt;- file.path(getwd(), &#39;data&#39;, &#39;outputs&#39;, model, paste0(&quot;model_results_&quot;, scale_type, &quot;.rds&quot;))
+rolling_dlm &lt;- readRDS(path_rolling_dlm)
+betas_df &lt;- rolling_dlm$smooth$s</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+</div>
+<div id="make-the-proper-adjustments-on-column-names-date-format-etc" class="section level1">
+<h1>Make the proper adjustments on column names, date format etc</h1>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuIyByZW5hbWVcbm5hbWVfbGlzdCA8LSBsaXN0KEtSVz1cIktvcmVhXCIsXG4gICAgICAgICAgICAgICAgICBNWVI9XCJNYWxhc2lhXCIsXG4gICAgICAgICAgICAgICAgICBDTlk9XCJDaGluYVwiLFxuICAgICAgICAgICAgICAgICAgVEhCPVwiVGhhaWxhbmRcIixcbiAgICAgICAgICAgICAgICAgIElEUj1cIkluZG9uZXNpYVwiLFxuICAgICAgICAgICAgICAgICAgVFdEPVwiVGFpd2FuXCIsXG4gICAgICAgICAgICAgICAgICBJTlI9XCJJbmRpYVwiLFxuICAgICAgICAgICAgICAgICAgSlBZPVwiSmFwYW5cIixcbiAgICAgICAgICAgICAgICAgIEVVUj1cIkVVXCIsXG4gICAgICAgICAgICAgICAgICBBVUQ9XCJBdXN0cmFsaWFcIixcbiAgICAgICAgICAgICAgICAgIEdCUD1cIkVuZ2xhbmRcIixcbiAgICAgICAgICAgICAgICAgIFNHRD1cIlNpbmdhcG9yZVwiKVxubWFzX2RlY2lzaW9uc19kZiA8LSBtYXNfZGVjaXNpb25zX2RmICU+JSBtdXRhdGUoZGF0ZT15bWQoZGF0ZSkpXG5jdXJyZW5jaWVzX2RmIDwtIGN1cnJlbmNpZXNfZGYgJT4lIHNlbGVjdCgtWCkgJT4lIG11dGF0ZShkYXRlPXltZChkYXRlKSlcbmZvciAoY29sbmFtZSBpbiBuYW1lcyhuYW1lX2xpc3QpKXtcbiAgbmV3X25hbWUgPC0gbmFtZV9saXN0W1tjb2xuYW1lXV1cbiAgXG4gICMgY3VycmVuY2llc1xuICBvcmlnX25hbWUgPC0gY29sbmFtZXMoY3VycmVuY2llc19kZilbZ3JlcChwYXN0ZTAoXCJeXCIsIGNvbG5hbWUpLCBjb2xuYW1lcyhjdXJyZW5jaWVzX2RmKSldXG4gIGN1cnJlbmNpZXNfZGYgPC0gY3VycmVuY2llc19kZiAlPiUgcmVuYW1lKCEhbmV3X25hbWUgOj0gISFvcmlnX25hbWUpXG4gIFxuICAjIGJldGFzIG9mIHRoZSBkbG0gbW9kZWxcbiAgb3JpZ19uYW1lIDwtIGNvbG5hbWVzKGJldGFzX2RmKVtncmVwKHBhc3RlMChcIl5cIiwgY29sbmFtZSksIGNvbG5hbWVzKGJldGFzX2RmKSldXG4gIGJldGFzX2RmIDwtIGJldGFzX2RmICU+JSByZW5hbWUoISFuZXdfbmFtZSA6PSAhIW9yaWdfbmFtZSlcbn1cbnRyYWRlX2RmIDwtIHRyYWRlX2RmICU+JSByZW5hbWUoZGF0ZT16KSAlPiUgbXV0YXRlKGRhdGU9eW1kKGRhdGUpKSAlPiUgcmVuYW1lKFwiRVVcIj1gVW5pb24gRXVyb3BlYW5gKVxuYGBgIn0= -->
+<pre class="r"><code># rename
+name_list &lt;- list(KRW=&quot;Korea&quot;,
+                  MYR=&quot;Malasia&quot;,
+                  CNY=&quot;China&quot;,
+                  THB=&quot;Thailand&quot;,
+                  IDR=&quot;Indonesia&quot;,
+                  TWD=&quot;Taiwan&quot;,
+                  INR=&quot;India&quot;,
+                  JPY=&quot;Japan&quot;,
+                  EUR=&quot;EU&quot;,
+                  AUD=&quot;Australia&quot;,
+                  GBP=&quot;England&quot;,
+                  SGD=&quot;Singapore&quot;)
+mas_decisions_df &lt;- mas_decisions_df %&gt;% mutate(date=ymd(date))
+currencies_df &lt;- currencies_df %&gt;% select(-X) %&gt;% mutate(date=ymd(date))
+for (colname in names(name_list)){
+  new_name &lt;- name_list[[colname]]
+  
+  # currencies
+  orig_name &lt;- colnames(currencies_df)[grep(paste0(&quot;^&quot;, colname), colnames(currencies_df))]
+  currencies_df &lt;- currencies_df %&gt;% rename(!!new_name := !!orig_name)
+  
+  # betas of the dlm model
+  orig_name &lt;- colnames(betas_df)[grep(paste0(&quot;^&quot;, colname), colnames(betas_df))]
+  betas_df &lt;- betas_df %&gt;% rename(!!new_name := !!orig_name)
+}
+trade_df &lt;- trade_df %&gt;% rename(date=z) %&gt;% mutate(date=ymd(date)) %&gt;% rename(&quot;EU&quot;=`Union European`)</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-chunk-end -->
+<!-- rnb-text-begin -->
+</div>
+<div id="beta-estimates-slide" class="section level1">
+<h1>Beta Estimates Slide</h1>
+<!-- rnb-text-end -->
+<!-- rnb-chunk-begin -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiRkdWLUVFUEdFIE1hY3JvIHByZXNlbnRhdGlvbiBwbG90cyIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKYGBge3J9CnJtKGxpc3Q9bHMoKSkKbGlicmFyeSgnZHBseXInKQpsaWJyYXJ5KCdnZ3Bsb3QyJykKCnNvdXJjZShmaWxlLnBhdGgoZ2V0d2QoKSwgJ3Bsb3RzJywgJ3Bsb3RfZnVuY3MuUicpKQoKSU5QVVRfUEFUSCA8LSBmaWxlLnBhdGgoZ2V0d2QoKSwgJ2RhdGEnLCAnaW5wdXRzJykKYGBgCgojIExvYWQgTUFTIGludGVydmVudGlvbnMsIGV4Y2hhbmdlIHJhdGVzLCB0cmFkZSBiYWxhbmNlIGRhdGEgYW5kIERMTSBiZXRhcyBkYXRhc2V0cwoKYGBge3J9CgpgYGAKCgo=</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiRkdWLUVFUEdFIE1hY3JvIHByZXNlbnRhdGlvbiBwbG90cyIKb3V0cHV0OiBodG1sX25vdGVib29rCi0tLQoKYGBge3J9CnJtKGxpc3Q9bHMoKSkKbGlicmFyeSgnZHBseXInKQpsaWJyYXJ5KCdnZ3Bsb3QyJykKbGlicmFyeSgicmVhZHhsIikKbGlicmFyeSgibHVicmlkYXRlIikKCnNvdXJjZShmaWxlLnBhdGgoZ2V0d2QoKSwgJ3Bsb3RzJywgJ3Bsb3RfZnVuY3MuUicpKQoKSU5QVVRfUEFUSCA8LSBmaWxlLnBhdGgoZ2V0d2QoKSwgJ2RhdGEnLCAnaW5wdXRzJykKVVRJTFNfUEFUSCA8LSBmaWxlLnBhdGgoZ2V0d2QoKSwgJ2RhdGEnLCAndXRpbHMnKQpgYGAKCiMgTG9hZCBNQVMgaW50ZXJ2ZW50aW9ucywgZXhjaGFuZ2UgcmF0ZXMsIHRyYWRlIGJhbGFuY2UgZGF0YSBhbmQgRExNIGJldGFzIGRhdGFzZXRzCgpgYGB7cn0KbWFzX2RlY2lzaW9uc19kZiA8LSByZWFkX2V4Y2VsKGZpbGUucGF0aChVVElMU19QQVRILCAibWFzX2ludGVydmVudGlvbnMueGxzeCIpKQpjdXJyZW5jaWVzX2RmIDwtIHJlYWQuY3N2KGZpbGUucGF0aChJTlBVVF9QQVRILCAiY3VycmVuY2llcy5jc3YiKSkKdHJhZGVfZGYgPC0gcmVhZF9leGNlbChmaWxlLnBhdGgoSU5QVVRfUEFUSCwgIlNHRF9yZWxfaW1wX2V4cC54bHN4IikpCgptb2RlbCA8LSAnZGxtJwpzY2FsZV90eXBlIDwtICdyb2xsaW5nX3NjYWxlJwpwYXRoX3JvbGxpbmdfZGxtIDwtIGZpbGUucGF0aChnZXR3ZCgpLCAnZGF0YScsICdvdXRwdXRzJywgbW9kZWwsIHBhc3RlMCgibW9kZWxfcmVzdWx0c18iLCBzY2FsZV90eXBlLCAiLnJkcyIpKQpyb2xsaW5nX2RsbSA8LSByZWFkUkRTKHBhdGhfcm9sbGluZ19kbG0pCmJldGFzX2RmIDwtIHJvbGxpbmdfZGxtJHNtb290aCRzCmBgYAoKIyBNYWtlIHRoZSBwcm9wZXIgYWRqdXN0bWVudHMgb24gY29sdW1uIG5hbWVzLCBkYXRlIGZvcm1hdCBldGMKCmBgYHtyfQojIHJlbmFtZQpuYW1lX2xpc3QgPC0gbGlzdChLUlc9IktvcmVhIiwKICAgICAgICAgICAgICAgICAgTVlSPSJNYWxhc2lhIiwKICAgICAgICAgICAgICAgICAgQ05ZPSJDaGluYSIsCiAgICAgICAgICAgICAgICAgIFRIQj0iVGhhaWxhbmQiLAogICAgICAgICAgICAgICAgICBJRFI9IkluZG9uZXNpYSIsCiAgICAgICAgICAgICAgICAgIFRXRD0iVGFpd2FuIiwKICAgICAgICAgICAgICAgICAgSU5SPSJJbmRpYSIsCiAgICAgICAgICAgICAgICAgIEpQWT0iSmFwYW4iLAogICAgICAgICAgICAgICAgICBFVVI9IkVVIiwKICAgICAgICAgICAgICAgICAgQVVEPSJBdXN0cmFsaWEiLAogICAgICAgICAgICAgICAgICBHQlA9IkVuZ2xhbmQiLAogICAgICAgICAgICAgICAgICBTR0Q9IlNpbmdhcG9yZSIpCm1hc19kZWNpc2lvbnNfZGYgPC0gbWFzX2RlY2lzaW9uc19kZiAlPiUgbXV0YXRlKGRhdGU9eW1kKGRhdGUpKQpjdXJyZW5jaWVzX2RmIDwtIGN1cnJlbmNpZXNfZGYgJT4lIHNlbGVjdCgtWCkgJT4lIG11dGF0ZShkYXRlPXltZChkYXRlKSkKZm9yIChjb2xuYW1lIGluIG5hbWVzKG5hbWVfbGlzdCkpewogIG5ld19uYW1lIDwtIG5hbWVfbGlzdFtbY29sbmFtZV1dCiAgCiAgIyBjdXJyZW5jaWVzCiAgb3JpZ19uYW1lIDwtIGNvbG5hbWVzKGN1cnJlbmNpZXNfZGYpW2dyZXAocGFzdGUwKCJeIiwgY29sbmFtZSksIGNvbG5hbWVzKGN1cnJlbmNpZXNfZGYpKV0KICBjdXJyZW5jaWVzX2RmIDwtIGN1cnJlbmNpZXNfZGYgJT4lIHJlbmFtZSghIW5ld19uYW1lIDo9ICEhb3JpZ19uYW1lKQogIAogICMgYmV0YXMgb2YgdGhlIGRsbSBtb2RlbAogIG9yaWdfbmFtZSA8LSBjb2xuYW1lcyhiZXRhc19kZilbZ3JlcChwYXN0ZTAoIl4iLCBjb2xuYW1lKSwgY29sbmFtZXMoYmV0YXNfZGYpKV0KICBiZXRhc19kZiA8LSBiZXRhc19kZiAlPiUgcmVuYW1lKCEhbmV3X25hbWUgOj0gISFvcmlnX25hbWUpCn0KdHJhZGVfZGYgPC0gdHJhZGVfZGYgJT4lIHJlbmFtZShkYXRlPXopICU+JSBtdXRhdGUoZGF0ZT15bWQoZGF0ZSkpICU+JSByZW5hbWUoIkVVIj1gVW5pb24gRXVyb3BlYW5gKQpgYGAKCiMgQmV0YSBFc3RpbWF0ZXMgU2xpZGUKCmBgYHtyfQoKYGBgCgo=</div>
 
 
 

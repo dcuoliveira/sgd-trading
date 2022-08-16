@@ -7,16 +7,64 @@ output: html_notebook
 rm(list=ls())
 library('dplyr')
 library('ggplot2')
+library("readxl")
+library("lubridate")
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 
 INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
+UTILS_PATH <- file.path(getwd(), 'data', 'utils')
 ```
 
 # Load MAS interventions, exchange rates, trade balance data and DLM betas datasets
 
 ```{r}
+mas_decisions_df <- read_excel(file.path(UTILS_PATH, "mas_interventions.xlsx"))
+currencies_df <- read.csv(file.path(INPUT_PATH, "currencies.csv"))
+trade_df <- read_excel(file.path(INPUT_PATH, "SGD_rel_imp_exp.xlsx"))
 
+model <- 'dlm'
+scale_type <- 'rolling_scale'
+path_rolling_dlm <- file.path(getwd(), 'data', 'outputs', model, paste0("model_results_", scale_type, ".rds"))
+rolling_dlm <- readRDS(path_rolling_dlm)
+betas_df <- rolling_dlm$smooth$s
 ```
 
+# Make the proper adjustments on column names, date format etc
+
+```{r}
+# rename
+name_list <- list(KRW="Korea",
+                  MYR="Malasia",
+                  CNY="China",
+                  THB="Thailand",
+                  IDR="Indonesia",
+                  TWD="Taiwan",
+                  INR="India",
+                  JPY="Japan",
+                  EUR="EU",
+                  AUD="Australia",
+                  GBP="England",
+                  SGD="Singapore")
+mas_decisions_df <- mas_decisions_df %>% mutate(date=ymd(date))
+currencies_df <- currencies_df %>% select(-X) %>% mutate(date=ymd(date))
+for (colname in names(name_list)){
+  new_name <- name_list[[colname]]
+  
+  # currencies
+  orig_name <- colnames(currencies_df)[grep(paste0("^", colname), colnames(currencies_df))]
+  currencies_df <- currencies_df %>% rename(!!new_name := !!orig_name)
+  
+  # betas of the dlm model
+  orig_name <- colnames(betas_df)[grep(paste0("^", colname), colnames(betas_df))]
+  betas_df <- betas_df %>% rename(!!new_name := !!orig_name)
+}
+trade_df <- trade_df %>% rename(date=z) %>% mutate(date=ymd(date)) %>% rename("EU"=`Union European`)
+```
+
+# Beta Estimates Slide
+
+```{r}
+
+```
 
