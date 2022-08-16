@@ -66,6 +66,15 @@ dlm_filter <- dlmFilter(y, dlm_model)
 dlm_smooth <- dlmSmooth(dlm_filter)
 dlm_filter_residual <- residuals(dlm_filter)
 
+# rename columns
+## smooth parameters
+dlm_smooth$s <- dlm_smooth$s %>% as.data.table()
+colnames(dlm_smooth$s) <- append("intercept", colnames(X))
+dlm_smooth$s <- dlm_smooth$s[2:dim(dlm_smooth$s)[1], ]
+dlm_smooth$s$date <- ymd(rownames(X))
+dlm_smooth$s <- dlm_smooth$s %>% select(date, everything())
+
+# outputs
 dlmout <- list(filter=dlm_filter,
                smooth=dlm_smooth)
 
