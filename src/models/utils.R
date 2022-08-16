@@ -72,6 +72,19 @@ data_frame_to_ts_list = function(df,
   
 }
 
+resample_data = function(df){
+  # create missing days and delete weekends
+  df = df %>% mutate(date=ymd(date)) %>% pad() %>%
+    mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='Sex'|weekday=='Fri') %>% select(-weekday)
+  
+  # fill na's forward
+  dtref <- df$date
+  df <- df %>% select(-date) %>% lapply(function(x) {na.locf(na.locf(x), fromLast=T)}) %>% do.call(cbind, .) %>% as.data.table() %>%
+    mutate(date=dtref) %>% select(date, everything())
+  
+  return(df)
+}
+
 merge_fx_sneer_data = function(){
 
   fx_data = read.csv(here('src', 'data', 'inputs', 'currencies.csv')) %>% mutate(date=ymd(date)) %>% select(-X)
