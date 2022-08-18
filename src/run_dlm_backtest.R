@@ -106,5 +106,11 @@ ggplot(data = melt_cum_strategy_returns_df,
   geom_line() +
   ggtitle("Cummulative returns os $1 invested in each asset")
 
+## cointegration error
+ggplot(data = cointegration_error_df, mapping = aes(x=date)) +
+  geom_line(mapping = aes(x=date, y=residual, colour="cointegration error")) +
+  geom_line(mapping = aes(x=date, y=ub, colour="bounds")) +
+  geom_line(mapping = aes(x=date, y=lb, colour="bounds"))
+
 
 
