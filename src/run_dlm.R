@@ -19,7 +19,7 @@ INTERCEPT <- TRUE
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
 
-data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
@@ -43,7 +43,7 @@ if (SCALE_TYPE == "scale"){
 }
 
 y <- data[,TARGET]
-X <- data %>% select(-!!(TARGET), -SNEER)
+X <- data %>% select(-!!(TARGET))
 
 # MLE estimates of the variance
 lm_model <- lm(formula = model_formula,
@@ -65,6 +65,10 @@ dlm_model$C0 <- diag(1e7, nr = 2 * m)
 dlm_filter <- dlmFilter(y, dlm_model)
 dlm_smooth <- dlmSmooth(dlm_filter)
 dlm_filter_residual <- residuals(dlm_filter)
+dlm_filter_residual$res <- as.data.frame(dlm_filter_residual$res)
+colnames(dlm_filter_residual$res) <- "residual"
+dlm_filter_residual$res$date <- ymd(rownames(X))
+dlm_filter_residual$res <- dlm_filter_residual$res %>% select(date, everything())
 
 # rename columns
 ## smooth parameters
@@ -76,7 +80,8 @@ dlm_smooth$s <- dlm_smooth$s %>% select(date, everything())
 
 # outputs
 dlmout <- list(filter=dlm_filter,
-               smooth=dlm_smooth)
+               smooth=dlm_smooth,
+               residuals=dlm_filter_residual)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 saveRDS(dlmout, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
