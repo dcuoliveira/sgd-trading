@@ -13,6 +13,7 @@ library('padr')
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
+source("https://gist.github.com/ellisp/4002241def4e2b360189e58c3f461b4a/raw/0e5dc52262e86b5d21b914db3553e58b0b8d1d20/dualplot.R")
 
 INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
 OUTPUT_PATH <- file.path(getwd(), "data", "outputs")
@@ -74,7 +75,7 @@ currencies_df <- resample_data(currencies_df)
 
 ```{r}
 apply_mean <- TRUE
-apply_zscore <- TRUE
+apply_zscore <- FALSE
 
 for (colname in colnames(betas_df %>% select(-date, -intercept))){
   
@@ -98,8 +99,7 @@ for (colname in colnames(betas_df %>% select(-date, -intercept))){
     tmp_plot_df$date <- tmp_plot_date
     tmp_plot_df <- tmp_plot_df %>% select(date, everything()) 
     tag <- "_zscore"
-  }
-  else{
+  }else{
     tag <- ""
   }
   
@@ -108,8 +108,8 @@ for (colname in colnames(betas_df %>% select(-date, -intercept))){
   geom_line(aes(y=!!sym(colnames(tmp_plot_df)[2]), colour="Beta estimates")) + 
   geom_line(aes(y=!!sym(colnames(tmp_plot_df)[3]), colour="Trade proxy")) + 
   scale_y_continuous(name = "", sec.axis = sec_axis(~.*1, name="")) + 
-  ggtitle(colname) 
-  
+  ggtitle(colname)
+
   # save plot
   ggsave(plot = plot_img,
        filename = file.path(PPT_OUTPUT_PATH, paste0(colname, "_dlm_betas_trade", tag,".png")),
