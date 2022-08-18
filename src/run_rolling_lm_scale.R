@@ -19,7 +19,7 @@ INTERCEPT <- TRUE
 TARGET <- "SGD"
 SCALE_TYPE <- "scale"
 
-data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 
 if (INTERCEPT == T){
   model_formula <- paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + "), "+1")
@@ -29,7 +29,7 @@ if (INTERCEPT == T){
 
 rollingreg <- roll_reg_prop(formula = model_formula,
                             target_name=TARGET,
-                            data = data %>% select(-SNEER),
+                            data = data,
                             reg_window_size = WINDOW_SIZE,
                             mean_window_size = MEAN_WINDOW_SIZE,
                             scale_type = SCALE_TYPE,

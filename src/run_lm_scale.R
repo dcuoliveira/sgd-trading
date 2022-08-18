@@ -18,7 +18,7 @@ INTERCEPT <- TRUE
 TARGET <- "SGD"
 SCALE_TYPE <- "scale"
 
-data <- merge_fx_sneer_data() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
