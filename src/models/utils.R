@@ -85,10 +85,22 @@ resample_data = function(df){
   return(df)
 }
 
+load_and_resample_currencies = function(){
+ 
+  fx_data = read.csv(here('src', 'data', 'inputs', 'currencies.csv')) %>% mutate(date=ymd(date)) %>% select(-X) %>%
+    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='Sex'|weekday=='Fri') %>%
+    select(-weekday)
+  
+  fx_data = na.locf(na.locf(fx_data), fromLast = TRUE)
+  colnames(fx_data) = unlist(lapply(colnames(fx_data), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
+  rownames(fx_data) = fx_data$date
+  
+  return(fx_data)
+}
+
 merge_fx_sneer_data = function(){
 
   fx_data = read.csv(here('src', 'data', 'inputs', 'currencies.csv')) %>% mutate(date=ymd(date)) %>% select(-X)
-  
   sneer_data = read.csv(here('src', 'data', 'inputs', 'sneer.csv')) %>% mutate(date=ymd(date)) %>%
     pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='Sex'|weekday=='Fri') %>% select(-weekday, -X)
   
