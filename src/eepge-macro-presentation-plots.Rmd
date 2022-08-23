@@ -75,7 +75,8 @@ currencies_df <- resample_data(currencies_df)
 
 ```{r}
 apply_mean <- TRUE
-apply_zscore <- FALSE
+apply_zscore <- TRUE
+start_date <- "2008-01-01"
 
 for (colname in colnames(betas_df %>% select(-date, -intercept))){
   
@@ -104,7 +105,7 @@ for (colname in colnames(betas_df %>% select(-date, -intercept))){
   }
   
   # multiaxis plot data
-  plot_img <- ggplot(tmp_plot_df, aes(x=date)) + 
+  plot_img <- ggplot(tmp_plot_df %>% filter(date >= start_date), aes(x=date)) + 
   geom_line(aes(y=!!sym(colnames(tmp_plot_df)[2]), colour="Beta estimates")) + 
   geom_line(aes(y=!!sym(colnames(tmp_plot_df)[3]), colour="Trade proxy")) + 
   scale_y_continuous(name = "", sec.axis = sec_axis(~.*1, name="")) + 
@@ -119,12 +120,118 @@ for (colname in colnames(betas_df %>% select(-date, -intercept))){
 }
 ```
 
-```{r}
+## All DLM estimates
 
+```{r}
+plot_img <- ggplot(data = betas_df %>% filter(date >= start_date) %>% melt("date"), 
+                   mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+              geom_line() +
+              ggtitle("DLM parameter estimates (with intercept")
+
+# save plot
+ggsave(plot = plot_img,
+     filename = file.path(PPT_OUTPUT_PATH, "all_betas_dlm_estimates_intercept.png"),
+     width = 12,
+     height = 8,
+     dpi = 100)
+plot_img
 ```
 
+```{r}
+plot_img <- ggplot(data = betas_df %>% select(-intercept) %>% filter(date >= start_date) %>% melt("date"), 
+                   mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+              geom_line() +
+              ggtitle("DLM parameter estimates (without intercept")
 
+# save plot
+ggsave(plot = plot_img,
+     filename = file.path(PPT_OUTPUT_PATH, "all_betas_dlm_estimates.png"),
+     width = 12,
+     height = 8,
+     dpi = 100)
+plot_img
+```
 
+# 2) Backtest
+
+## EWMA vol bands
+
+```{r}
+strategy <- "ewma"
+
+ewma_outputs <- readRDS(file.path(OUTPUT_PATH, model, paste0("backtest_", strategy, "_results.rds")))
+ewma_rets_df <- ewma_outputs$returns
+ewma_signal_df <- ewma_outputs$signal
+ewma_position_df <- ewma_outputs$positions
+ewma_bars_ret_df <- ewma_outputs$bars_ret
+ewma_bars_df <- ewma_outputs$bars
+
+ewma_cumret_df <- cumprod(1+(ewma_rets_df %>% select(-date))) %>% mutate(date=ewma_rets_df$date) %>% select(date, everything())
+```
+
+### Cummulative returns of each currency
+
+```{r}
+plot_img <- ggplot(data = ewma_cumret_df %>% filter(date >= start_date) %>% melt("date"), 
+                   mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+              geom_line() +
+              ggtitle("Cummulative returns of $1 invested in each asset")
+
+# save plot
+ggsave(plot = plot_img,
+     filename = file.path(PPT_OUTPUT_PATH, paste0("cumret_all_assets_", model, "_", strategy, ".png")),
+     width = 12,
+     height = 8,
+     dpi = 100)
+plot_img
+```
+
+### Cummulative returns of the portfolio
+
+```{r}
+plot_img <- ggplot(data = data.frame(date=ewma_rets_df$date,
+                                     rets=cumprod(1+rowSums(ewma_rets_df %>% select(-date)))),
+                   mapping = aes(x = date, y = rets)) + 
+              geom_line() + 
+              ggtitle("Cummulative returns of $1 invested in the portfolio")
+
+# save plot
+ggsave(plot = plot_img,
+     filename = file.path(PPT_OUTPUT_PATH, paste0("cumret_portfolio_", model, "_", strategy, ".png")),
+     width = 12,
+     height = 8,
+     dpi = 100)
+plot_img
+```
+
+### Portfolio statistics
+
+```{r}
+ewma_portfolio_rets_df <- rowSums(ewma_rets_df %>% select(-date)) %>% as.data.table() %>%
+  mutate(date=ewma_rets_df$date) %>% select(date, everything()) %>% rename(portfolio=".")
+ewma_portfolio_rets_ts <- as.xts(ewma_portfolio_rets_df$portfolio, order.by = ewma_portfolio_rets_df$date)
+ewma_stats <- list(mean=mean(ewma_portfolio_rets_df$portfolio) * 252 * 100,
+                   vol=sd(ewma_portfolio_rets_df$portfolio) * sqrt(252) * 100,
+                   SR=(mean(ewma_portfolio_rets_df$portfolio) / sd(ewma_portfolio_rets_df$portfolio)) * sqrt(252))
+as.data.table(ewma_stats)
+```
+### Intuition why the strategy works
+
+```{r}
+tmp_ewma_position_df <- ewma_position_df %>% select(date, SGD) %>%
+  filter((date >= "2015-01-01")&(date <= "2016-01-01")) %>% rename(positions=SGD)
+tmp_ewma_bars_df <- ewma_bars_df %>% select(date, SGD) %>%
+  filter((date >= "2015-01-01")&(date <= "2016-01-01")) %>% rename(SGD_price=SGD)
+tmp_ewma_bars_ret_df <- ewma_bars_ret_df %>% select(date, SGD) %>%
+  filter((date >= "2015-01-01")&(date <= "2016-01-01")) %>% rename(SGD_ret=SGD)
+tmp_ewma_signal_df <- ewma_signal_df %>% filter((date >= "2015-01-01")&(date <= "2016-01-01"))
+tmp_ewma_rets_df <- ewma_rets_df %>% select(date, SGD) %>%
+  filter((date >= "2015-01-01")&(date <= "2016-01-01")) %>% rename(portfolio_ret=SGD)
+
+tmp_check_strategy <- merge(tmp_ewma_signal_df, tmp_ewma_position_df, by = "date") %>% merge(tmp_ewma_bars_df, by = "date")  %>% merge(tmp_ewma_bars_ret_df, by = "date") %>%  merge(tmp_ewma_rets_df, by = "date")
+tail(round(x = tmp_check_strategy %>% select(-date), digits = 3) %>%
+       mutate(date=tmp_check_strategy$date) %>% select(date, everything()))
+```
 
 
 
