@@ -92,25 +92,4 @@ strategy_returns_df <- strategy_returns_df %>% select(date, everything())
 cum_strategy_returns_df$date <- out_positions_df$date
 cum_strategy_returns_df <- cum_strategy_returns_df %>% select(date, everything())
 
-# plots
-## cummulative return of the portfolio
-ggplot(data = data.frame(date=strategy_returns_df$date, rets=cumprod(1+rowSums(strategy_returns_df %>% select(-date)))),
-       mapping = aes(x = date, y = rets)) + 
-  geom_line() + 
-  ggtitle("Cummulative returns os $1 invested in the portfolio")
-
-## cummulative return of the portfolio
-melt_cum_strategy_returns_df <- cum_strategy_returns_df %>% melt("date")
-ggplot(data = melt_cum_strategy_returns_df, 
-       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
-  geom_line() +
-  ggtitle("Cummulative returns os $1 invested in each asset")
-
-## cointegration error
-ggplot(data = cointegration_error_df, mapping = aes(x=date)) +
-  geom_line(mapping = aes(x=date, y=residual, colour="cointegration error")) +
-  geom_line(mapping = aes(x=date, y=ub, colour="bounds")) +
-  geom_line(mapping = aes(x=date, y=lb, colour="bounds"))
-
-
 
