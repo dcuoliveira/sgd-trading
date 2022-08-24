@@ -208,7 +208,7 @@ plot_img
 ```{r}
 ewma_ret_df <- data.frame(date=ewma_rets_df$date,
                           portfolio=rowSums(ewma_rets_df %>% select(-date)))
-roll_portfolio_vol <- roll_sd(x = ewma_ret_df$portfolio, width = 30) * sqrt(12) * 100
+roll_portfolio_vol <- roll_sd(x = ewma_ret_df$portfolio, width = 90) * sqrt(12) * 100
 roll_portfolio_vol <- 5 / roll_portfolio_vol
 vol_adj_ret_df <- ewma_ret_df %>% mutate(portfolio=portfolio*roll_portfolio_vol) %>% drop_na()
 
