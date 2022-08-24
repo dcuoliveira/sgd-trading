@@ -160,7 +160,7 @@ plot_img
 strategy <- "ewma"
 
 ewma_outputs <- readRDS(file.path(OUTPUT_PATH, model, paste0("backtest_", strategy, "_results.rds")))
-ewma_rets_df <- ewma_outputs$returns
+ewma_rets_df <- ewma_outputs$returns %>% drop_na()
 ewma_signal_df <- ewma_outputs$signal
 ewma_position_df <- ewma_outputs$positions
 ewma_bars_ret_df <- ewma_outputs$bars_ret
@@ -203,6 +203,45 @@ ggsave(plot = plot_img,
      dpi = 100)
 plot_img
 ```
+### Cummulative returns of the portfolio with vol. target of 5%
+
+```{r}
+ewma_ret_df <- data.frame(date=ewma_rets_df$date,
+                          portfolio=rowSums(ewma_rets_df %>% select(-date)))
+roll_portfolio_vol <- roll_sd(x = ewma_ret_df$portfolio, width = 30) * sqrt(12) * 100
+roll_portfolio_vol <- 5 / roll_portfolio_vol
+vol_adj_ret_df <- ewma_ret_df %>% mutate(portfolio=portfolio*roll_portfolio_vol) %>% drop_na()
+
+plot_img <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
+                                     portfolio=cumprod(1+vol_adj_ret_df %>% select(-date))),
+                   mapping = aes(x = date, y = portfolio)) + 
+              geom_line() + 
+              ggtitle("Cummulative returns of $1 invested in the portfolio (vol. target 5%)")
+
+# save plot
+ggsave(plot = plot_img,
+     filename = file.path(PPT_OUTPUT_PATH, paste0("cumret_portfolio_vol_target_", model, "_", strategy, ".png")),
+     width = 12,
+     height = 8,
+     dpi = 100)
+plot_img
+```
+
+### Positions scaling factor
+
+```{r}
+mean(roll_portfolio_vol, na.rm = TRUE)
+ggplot(data = data.frame(date=ewma_ret_df$date,
+                         scaling_factor=roll_portfolio_vol) %>% drop_na(),
+                   mapping = aes(x = date, y = scaling_factor)) + 
+              geom_line() 
+```
+
+### Sanity check assets ann. mean and vol
+
+```{r}
+(apply(ewma_bars_ret_df %>% select(-date), 2, sd) * sqrt(252))
+```
 
 ### Portfolio statistics
 
@@ -210,8 +249,8 @@ plot_img
 ewma_portfolio_rets_df <- rowSums(ewma_rets_df %>% select(-date)) %>% as.data.table() %>%
   mutate(date=ewma_rets_df$date) %>% select(date, everything()) %>% rename(portfolio=".")
 ewma_portfolio_rets_ts <- as.xts(ewma_portfolio_rets_df$portfolio, order.by = ewma_portfolio_rets_df$date)
-ewma_stats <- list(mean=mean(ewma_portfolio_rets_df$portfolio) * 252 * 100,
-                   vol=sd(ewma_portfolio_rets_df$portfolio) * sqrt(252) * 100,
+ewma_stats <- list(mean=mean(ewma_portfolio_rets_df$portfolio) * 252,
+                   vol=sd(ewma_portfolio_rets_df$portfolio) * sqrt(252),
                    SR=(mean(ewma_portfolio_rets_df$portfolio) / sd(ewma_portfolio_rets_df$portfolio)) * sqrt(252))
 as.data.table(ewma_stats)
 ```
