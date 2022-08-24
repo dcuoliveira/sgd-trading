@@ -80,12 +80,18 @@ for (colname in colnames(out_positions_df)){
 returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% 
   mutate(date=out_positions_df$date) %>% select(date, everything())
 lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-1)]),
-                         lead(returns_df %>% select(-date)) %>% drop_na())%>% as.data.table()
+                         lead(returns_df %>% select(-date)) %>% drop_na()) %>% as.data.table()
 
 # generate stretegy returns
 out_positions_df <- merge(out_positions_df, lead_returns_df %>% select(date), by = "date")
 strategy_returns_df <- (out_positions_df %>% select(-date)) * (lead_returns_df %>% select(-date))
-strategy_returns_df <- strategy_returns_df %>% mutate(date=out_positions_df$date) %>% select(date, everything())
+strategy_returns_df <- strategy_returns_df %>% mutate(date=out_positions_df$date) %>%
+  select(date, everything()) %>% drop_na()
+
+all_cumret_df <- cumprod(1+(strategy_returns_df %>% select(-date))) %>%
+  mutate(date=strategy_returns_df$date) %>% select(date, everything())
+ret_df <- data.frame(date=strategy_returns_df$date,
+                        portfolio=rowSums(strategy_returns_df %>% select(-date)))
 
 outputs <- list(signal=cointegration_error_df,
                 positions=out_positions_df,
