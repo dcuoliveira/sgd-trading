@@ -218,6 +218,8 @@ plot_img <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
               geom_line() + 
               ggtitle("Cummulative returns of $1 invested in the portfolio (vol. target 5%)")
 
+print(paste0("Sharpe ratio of ", as.character(round(mean(vol_adj_ret_df$portfolio, na.rm = TRUE) / sd(vol_adj_ret_df$portfolio, na.rm = TRUE) * sqrt(252), 2))))
+
 # save plot
 ggsave(plot = plot_img,
      filename = file.path(PPT_OUTPUT_PATH, paste0("cumret_portfolio_vol_target_", model, "_", strategy, ".png")),
