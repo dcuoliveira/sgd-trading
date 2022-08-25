@@ -208,7 +208,7 @@ plot_img
 ```{r}
 ewma_ret_df <- data.frame(date=ewma_rets_df$date,
                           portfolio=rowSums(ewma_rets_df %>% select(-date)))
-roll_portfolio_vol <- roll_sd(x = ewma_ret_df$portfolio, width = 90) * sqrt(12) * 100
+roll_portfolio_vol <- roll_sd(x = ewma_ret_df$portfolio, width = 12) * sqrt(52) * 100
 roll_portfolio_vol <- 5 / roll_portfolio_vol
 vol_adj_ret_df <- ewma_ret_df %>% mutate(portfolio=portfolio*roll_portfolio_vol) %>% drop_na()
 
@@ -217,6 +217,12 @@ plot_img <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
                    mapping = aes(x = date, y = portfolio)) + 
               geom_line() + 
               ggtitle("Cummulative returns of $1 invested in the portfolio (vol. target 5%)")
+
+plot_img2 <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
+                                      vol=roll_sd(x = vol_adj_ret_df$portfolio, width = 12) * sqrt(52) * 100),
+                    mapping = aes(x = date, y = vol)) +
+              geom_line() + 
+              ggtitle("Realized volatility of the portfolio")
 
 print(paste0("Sharpe ratio of ", as.character(round(mean(vol_adj_ret_df$portfolio, na.rm = TRUE) / sd(vol_adj_ret_df$portfolio, na.rm = TRUE) * sqrt(252), 2))))
 
@@ -227,6 +233,7 @@ ggsave(plot = plot_img,
      height = 8,
      dpi = 100)
 plot_img
+plot_img2
 ```
 
 ### Positions scaling factor
