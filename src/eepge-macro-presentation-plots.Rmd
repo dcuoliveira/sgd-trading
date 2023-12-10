@@ -126,6 +126,8 @@ for (colname in colnames(betas_df %>% select(-date, -intercept))){
 plot_img <- ggplot(data = betas_df %>% filter(date >= start_date) %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("DLM parameter estimates (with intercept")
 
 # save plot
@@ -141,6 +143,8 @@ plot_img
 plot_img <- ggplot(data = betas_df %>% select(-intercept) %>% filter(date >= start_date) %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("DLM parameter estimates (without intercept")
 
 # save plot
@@ -175,6 +179,8 @@ ewma_cumret_df <- cumprod(1+(ewma_rets_df %>% select(-date))) %>% mutate(date=ew
 plot_img <- ggplot(data = ewma_cumret_df %>% filter(date >= start_date) %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("Cummulative returns of $1 invested in each asset")
 
 # save plot
