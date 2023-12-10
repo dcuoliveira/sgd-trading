@@ -24,9 +24,9 @@ PPT_OUTPUT_PATH <- file.path(OUTPUT_PATH, "eepge-macro-presentation")
 # Load MAS interventions, exchange rates, trade balance data and DLM betas datasets
 
 ```{r}
-mas_decisions_df <- read_excel(file.path(UTILS_PATH, "mas_interventions.xlsx"))
-currencies_df <- read.csv(file.path(INPUT_PATH, "currencies.csv"))
-trade_df <- read_excel(file.path(INPUT_PATH, "SGD_rel_imp_exp.xlsx"))
+# mas_decisions_df <- read_excel(file.path(UTILS_PATH, "mas_interventions.xlsx"))
+currencies_df <- read.csv(file.path(INPUT_PATH, "daily-currencies.csv"))
+trade_df <- read.csv(file.path(INPUT_PATH, "relative-trade-data.csv"))
 
 model <- 'dlm'
 scale_type <- 'rolling_scale'
@@ -40,7 +40,7 @@ betas_df <- rolling_dlm$smooth$s
 ```{r}
 # RENAME
 name_list <- list(KRW="Korea",
-                  MYR="Malasia",
+                  MYR="Malaysia",
                   CNY="China",
                   THB="Thailand",
                   IDR="Indonesia",
@@ -51,8 +51,8 @@ name_list <- list(KRW="Korea",
                   AUD="Australia",
                   GBP="England",
                   SGD="Singapore")
-mas_decisions_df <- mas_decisions_df %>% mutate(date=ymd(date))
-currencies_df <- currencies_df %>% select(-X) %>% mutate(date=ymd(date))
+# mas_decisions_df <- mas_decisions_df %>% mutate(date=ymd(date))
+currencies_df <- currencies_df %>% mutate(date=ymd(date))
 for (colname in names(name_list)){
   new_name <- name_list[[colname]]
   
@@ -64,10 +64,10 @@ for (colname in names(name_list)){
   orig_name <- colnames(betas_df)[grep(paste0("^", colname), colnames(betas_df))]
   betas_df <- betas_df %>% rename(!!new_name := !!orig_name)
 }
-trade_df <- trade_df %>% rename(date=z) %>% mutate(date=ymd(date)) %>% rename("EU"=`Union European`, Australia=Autralia)
+trade_df <- trade_df %>% mutate(date=ymd(date))
 
 # RESAMPLE
-currencies_df <- resample_data(currencies_df)
+currencies_df <- resample_data(currencies_df %>% select(-USD.Curncy) %>% filter(date >= "2006-01-01"))
 ```
 
 # 1) Beta Estimates
@@ -193,6 +193,8 @@ plot_img <- ggplot(data = data.frame(date=ewma_rets_df$date,
                                      rets=cumprod(1+rowSums(ewma_rets_df %>% select(-date)))),
                    mapping = aes(x = date, y = rets)) + 
               geom_line() + 
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("Cummulative returns of $1 invested in the portfolio")
 
 # save plot
@@ -216,12 +218,16 @@ plot_img <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
                                      portfolio=cumprod(1+vol_adj_ret_df %>% select(-date))),
                    mapping = aes(x = date, y = portfolio)) + 
               geom_line() + 
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("Cummulative returns of $1 invested in the portfolio (vol. target 5%)")
 
 plot_img2 <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
                                       vol=roll_sd(x = vol_adj_ret_df$portfolio, width = 12) * sqrt(52) * 100),
                     mapping = aes(x = date, y = vol)) +
               geom_line() + 
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("Realized volatility of the portfolio")
 
 print(paste0("Sharpe ratio of ", as.character(round(mean(vol_adj_ret_df$portfolio, na.rm = TRUE) / sd(vol_adj_ret_df$portfolio, na.rm = TRUE) * sqrt(252), 2))))
@@ -243,6 +249,8 @@ mean(roll_portfolio_vol, na.rm = TRUE)
 ggplot(data = data.frame(date=ewma_ret_df$date,
                          scaling_factor=roll_portfolio_vol) %>% drop_na(),
                    mapping = aes(x = date, y = scaling_factor)) + 
+              scale_x_date(date_breaks = "1 year") + 
+              theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               geom_line() 
 ```
 
