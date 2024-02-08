@@ -52,10 +52,17 @@ batas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
 residual_variance <- ((summary(lm_model)$sigma)) ** 2
 
 # DLM specs
+#########################################################
+# y_t = (F_t x I_m)\theta_t + v_t,  v_t ~ N(0, V)
+# \theta_t = (G_t x I_m)\theta_{t-1} + w_t, w_t ~ N(0, W)
+#
+# m: number of currencies
+# theta_t: time-varying alphas and betas 
+#########################################################
 m <- NCOL(X)
 dlm_model <- dlmModReg(X)
 dlm_model$FF <- dlm_model$FF
-dlm_model$GG <- dlm_model$GG 
+dlm_model$GG <- dlm_model$GG * 0.95
 dlm_model$W <- diag(batas_variaces)
 dlm_model$V <- residual_variance 
 dlm_model$m0 <- rep(0,2 * m)
