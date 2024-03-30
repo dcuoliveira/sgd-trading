@@ -145,7 +145,7 @@ plot_img <- ggplot(data = betas_df %>% select(-intercept) %>% filter(date >= sta
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 
               theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-              ggtitle("DLM parameter estimates (without intercept")
+              ggtitle("DLM parameter estimates (without intercept)")
 
 # save plot
 ggsave(plot = plot_img,
@@ -294,7 +294,6 @@ tmp_check_strategy <- merge(tmp_ewma_signal_df, tmp_ewma_position_df, by = "date
 tail(round(x = tmp_check_strategy %>% select(-date), digits = 3) %>%
        mutate(date=tmp_check_strategy$date) %>% select(date, everything()))
 ```
-
 
 
 
