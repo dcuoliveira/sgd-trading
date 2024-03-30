@@ -13,6 +13,7 @@ STRATEGY_TYPE <- "ewma"
 OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
+BETAS_TYPE <- "filter"
 
 # prices data
 prices_df <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
@@ -24,8 +25,12 @@ dlmout <- readRDS(file = file.path(OUTPUT_PATH, paste0("model_results_", SCALE_T
 cointegration_error_df <- dlmout$residuals$res %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
   mutate(ub=1.4*sqrt(ewma_vol), lb=-1.4*sqrt(ewma_vol))
 
-# dlm betas - pode melhorar aqui colocando o filter ao invés do smooth
-betas_df <- dlmout$smooth$s
+# dlm betas
+if (BETAS_TYPE == "smooth"){
+  betas_df <- dlmout$smooth$s
+}else{
+  betas_df <- dlmout$filter$m
+}
 
 # positions for the target (y) variable
 positions_df <- data.frame(date=cointegration_error_df$date,

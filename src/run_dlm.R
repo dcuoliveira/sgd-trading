@@ -54,7 +54,7 @@ residual_variance <- ((summary(lm_model)$sigma)) ** 2
 # DLM specs
 #########################################################
 # y_t = (F_t x I_m)\theta_t + v_t,  v_t ~ N(0, V)
-# \theta_t = (G_t x I_m)\theta_{t-1} + w_t, w_t ~ N(0, W)
+# \theta_t = (G_t x I_m)\theta_{t-1} + w_t, w_t ~ N(\boldsymbol{0}, W)
 #
 # m: number of currencies
 # theta_t: time-varying alphas and betas 
@@ -62,7 +62,7 @@ residual_variance <- ((summary(lm_model)$sigma)) ** 2
 m <- NCOL(X)
 dlm_model <- dlmModReg(X)
 dlm_model$FF <- dlm_model$FF
-dlm_model$GG <- dlm_model$GG * 0.95
+dlm_model$GG <- dlm_model$GG * 1
 dlm_model$W <- diag(batas_variaces)
 dlm_model$V <- residual_variance 
 dlm_model$m0 <- rep(0,2 * m)
@@ -84,6 +84,13 @@ colnames(dlm_smooth$s) <- append("intercept", colnames(X))
 dlm_smooth$s <- dlm_smooth$s[2:dim(dlm_smooth$s)[1], ]
 dlm_smooth$s$date <- ymd(rownames(X))
 dlm_smooth$s <- dlm_smooth$s %>% select(date, everything())
+
+## filter parameters
+dlm_filter$m <- dlm_filter$m %>% as.data.table()
+colnames(dlm_filter$m) <- append("intercept", colnames(X))
+dlm_filter$m <- dlm_filter$m[2:dim(dlm_filter$m)[1], ]
+dlm_filter$m$date <- ymd(rownames(X))
+dlm_filter$m <- dlm_filter$m %>% select(date, everything())
 
 # outputs
 dlmout <- list(filter=dlm_filter,
