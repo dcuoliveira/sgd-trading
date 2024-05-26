@@ -48,7 +48,7 @@ X <- data %>% select(-!!(TARGET))
 # MLE estimates of the variance
 lm_model <- lm(formula = model_formula,
                data = data)
-batas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
+betas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
 residual_variance <- ((summary(lm_model)$sigma)) ** 2
 
 # DLM specs
@@ -63,7 +63,7 @@ m <- NCOL(X)
 dlm_model <- dlmModReg(X)
 dlm_model$FF <- dlm_model$FF
 dlm_model$GG <- dlm_model$GG * 1
-dlm_model$W <- diag(batas_variaces)
+dlm_model$W <- diag(betas_variaces)
 dlm_model$V <- residual_variance 
 dlm_model$m0 <- rep(0,2 * m)
 dlm_model$C0 <- diag(1e7, nr = 2 * m)
