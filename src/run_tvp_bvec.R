@@ -7,13 +7,14 @@ library("rlang")
 library("reshape2")
 library("dlm")
 library("bvartools")
+library("here")
 
-source(file.path(getwd(), 'models', 'utils.R'))
-source(file.path(getwd(), 'models', 'models.R'))
-source(file.path(getwd(), 'plots', 'plot_funcs.R'))
+source(file.path(here(), 'src', 'models', 'utils.R'))
+source(file.path(here(), 'src', 'models', 'models.R'))
+source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 
 MODEL <- "tvp-bvec"
-OUTPUT_PATH <- file.path(getwd(), 'data', 'outputs', MODEL)
+OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
 WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
