@@ -8,6 +8,7 @@ library("reshape2")
 library("dlm")
 library("bvartools")
 library("here")
+library("parallel")
 
 source(file.path(here(), 'src', 'models', 'utils.R'))
 source(file.path(here(), 'src', 'models', 'models.R'))
@@ -20,6 +21,7 @@ MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
+num_cores <- detectCores() - 1
 
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
@@ -45,7 +47,6 @@ temp <- gen_vec(
                 )
 
 # start timer
-print("Running TVP-BVEC model...")
 start_time <- Sys.time()
 
 # Add priors to the "empty" models
@@ -63,7 +64,7 @@ temp <- add_priors(
   )
 
 # Run Gibbs sampler
-tvp_bvec_out <- draw_posterior(temp)
+tvp_bvec_out <- draw_posterior(temp, mc.cores = num_cores, verbose = TRUE)
 
 # end timer
 end_time <- Sys.time()
