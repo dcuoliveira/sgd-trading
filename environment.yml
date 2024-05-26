@@ -1,4 +1,4 @@
-name: cml-fin-r
+name: sgd-trading
 channels:
   - defaults
 dependencies:
