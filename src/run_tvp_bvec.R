@@ -22,6 +22,7 @@ TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
 
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+print(data)
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 tsdata <- ts(data, start = 1, end = nrow(data), frequency = 52)
