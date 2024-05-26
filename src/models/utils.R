@@ -2,6 +2,18 @@ library('padr')
 library('lubridate')
 library('zoo')
 
+load_package <- function(package) {
+  tryCatch(
+    {
+      library(package, character.only = TRUE)
+      message(paste("Package", package, "loaded successfully."))
+    },
+    error = function(e) {
+      message(paste("Error: Unable to load package", package, "- ", e$message))
+    }
+  )
+}
+
 gen_Y_rho_psi = function(rho_xi_post,
                          Yt,
                          delta_Yt,
