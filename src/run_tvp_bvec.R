@@ -42,6 +42,7 @@ SCALE_TYPE <- args$scale_type
 num_cores <- args$num_cores
 ITERATIONS <- args$iterations
 BURNIN <- args$burnin
+RANK <- 1:2
 
 # load data
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
@@ -71,7 +72,7 @@ temp <- gen_vec(
   p = 1, # endogenous variables lag order (var model)
   exogen = NULL, # exogenous variables
   s = NULL, # exogenous variables lag order
-  r = 1:2, # cointegration rank. It tests r = (0, 1, 2).
+  r = RANK, # cointegration rank. It tests r = (0, 1, 2).
   const = "unrestricted", # if a constant should be added to the error correction term (restricted) or the non-cointegration term (restricted)
   trend = NULL, # if a trend should be added to the error correction term (restricted) or the non-cointegration term (restricted)
   seasonal = NULL, # if seasonal dummies should be added to the error correction term (restricted) or the non-cointegration term (restricted)
@@ -109,5 +110,7 @@ print(paste0("Elapsed time: ", end_time - start_time))
 
 tvp_bvec_out$runtime <- end_time - start_time
 
+FINAL_RANK <- paste0(RANK, collapse = "-")
+
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", ITERATIONS, "_", BURNIN, ".rds")))
+saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
