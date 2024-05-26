@@ -87,7 +87,7 @@ data_frame_to_ts_list = function(df,
 resample_data = function(df){
   # create missing days and delete weekends
   df = df %>% mutate(date=ymd(date)) %>% pad() %>%
-    mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='Sex'|weekday=='Fri') %>% select(-weekday)
+    mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>% select(-weekday)
   
   # fill na's forward
   dtref <- df$date
@@ -100,13 +100,9 @@ resample_data = function(df){
 load_and_resample_currencies = function(){
   print(here('src', 'data', 'inputs', 'daily-currencies.csv'))
   fx_data = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>%
-    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) 
-  
-  print(fx_data)
-  
-  fx_data = fx_data %>% filter(weekday=='Sex'|weekday=='Fri') %>%
+    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
     select(-weekday, -USD.Curncy)
-
+  
   fx_data = na.locf(na.locf(fx_data), fromLast = TRUE)
   colnames(fx_data) = unlist(lapply(colnames(fx_data), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
   rownames(fx_data) = fx_data$date
