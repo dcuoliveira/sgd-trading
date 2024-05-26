@@ -106,7 +106,8 @@ load_and_resample_currencies = function(){
   fx_data = na.locf(na.locf(fx_data), fromLast = TRUE)
   colnames(fx_data) = unlist(lapply(colnames(fx_data), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
   rownames(fx_data) = fx_data$date
-  
+  print(fx_data)
+
   return(fx_data)
 }
 
