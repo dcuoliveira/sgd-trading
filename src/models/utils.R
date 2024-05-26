@@ -98,7 +98,6 @@ resample_data = function(df){
 }
 
 load_and_resample_currencies = function(){
-  print(here('src', 'data', 'inputs', 'daily-currencies.csv'))
   fx_data = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>%
     pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
     select(-weekday, -USD.Curncy)
