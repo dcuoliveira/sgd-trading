@@ -22,7 +22,6 @@ INTERCEPT <- TRUE
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
 num_cores <- detectCores() - 1
-print(paste0("Number of cores: ", num_cores))
 
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
