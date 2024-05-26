@@ -58,7 +58,7 @@ temp <- add_priors(
               rate_det = .0001),
   coint = list(shape = 0, # mean of the gaussian prior on the cointegration matrix
                rho = 0.9999, # var(\b_t) = I_{nr}\frac{1}{1-\rho^2} - variance of the prior on the model betas
-               rate = 1e-04) # var(\nu_t) - state error variance priors
+               rate = 1e-04), # var(\nu_t) - state error variance priors
   sigma = list(df = "k", scale = .0001) # measurement error variance priors
   )
 
