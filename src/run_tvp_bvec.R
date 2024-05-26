@@ -8,12 +8,12 @@ library("reshape2")
 library("dlm")
 library("bvartools")
 
-source(file.path(getwd(), 'src', 'models', 'utils.R'))
-source(file.path(getwd(), 'src', 'models', 'models.R'))
-source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
+source(file.path(getwd(), 'models', 'utils.R'))
+source(file.path(getwd(), 'models', 'models.R'))
+source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 
 MODEL <- "tvp-bvec"
-OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
+OUTPUT_PATH <- file.path(getwd(), 'data', 'outputs', MODEL)
 WINDOW_SIZE <- 52 * 2
 MEAN_WINDOW_SIZE <- 52 * 1
 INTERCEPT <- TRUE
@@ -43,6 +43,8 @@ temp <- gen_vec(
   burnin = 100 # number of mcmc draws to initialize the sampler
                 )
 
+# start timer
+print("Running TVP-BVEC model...")
 start_time <- Sys.time()
 
 # Add priors to the "empty" models
@@ -62,6 +64,7 @@ temp <- add_priors(
 # Run Gibbs sampler
 tvp_bvec_out <- draw_posterior(temp)
 
+# end timer
 end_time <- Sys.time()
 print(paste0("Elapsed time: ", end_time - start_time))
 
