@@ -18,12 +18,14 @@ source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 # define command-line options
 option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
-  make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs', "tvp-bvec")),
+  make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1)
+  make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100)
 )
 
 # create a parser object
@@ -33,11 +35,13 @@ parser <- OptionParser(option_list = option_list)
 args <- parse_args(parser)
 
 MODEL <- args$model_name
-OUTPUT_PATH <- args$output_path
+OUTPUT_PATH <- file.path(args$output_path, MODEL)
 WINDOW_SIZE <- args$window_size
 MEAN_WINDOW_SIZE <- args$mean_window_size
 SCALE_TYPE <- args$scale_type
 num_cores <- args$num_cores
+ITERATIONS <- args$iterations
+BURNIN <- args$burnin
 
 # load data
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
@@ -75,8 +79,8 @@ temp <- gen_vec(
   tvp = TRUE, # if the model parameters are time varying
   sv = FALSE, # if time varying error variances should be added (stoch vol)
   fcst = NULL, # number of observations saved for forecasting
-  iterations = 100, # mcmc draws excluding burn-in
-  burnin = 100 # number of mcmc draws to initialize the sampler
+  iterations = ITERATIONS, # mcmc draws excluding burn-in
+  burnin = BURNIN # number of mcmc draws to initialize the sampler
                 )
 
 # start timer
@@ -103,5 +107,7 @@ tvp_bvec_out <- draw_posterior(temp, mc.cores = num_cores, verbose = TRUE)
 end_time <- Sys.time()
 print(paste0("Elapsed time: ", end_time - start_time))
 
+tvp_bvec_out$runtime <- end_time - start_time
+
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
+saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", ITERATIONS, "_", BURNIN, ".rds")))
