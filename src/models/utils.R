@@ -100,9 +100,12 @@ resample_data = function(df){
 load_and_resample_currencies = function(){
   print(here('src', 'data', 'inputs', 'daily-currencies.csv'))
   fx_data = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>%
-    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='Sex'|weekday=='Fri') %>%
+    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) 
+  
+  print(fx_data)
+  
+  fx_data = fx_data %>% filter(weekday=='Sex'|weekday=='Fri') %>%
     select(-weekday, -USD.Curncy)
-    print(fx_data)
 
   fx_data = na.locf(na.locf(fx_data), fromLast = TRUE)
   colnames(fx_data) = unlist(lapply(colnames(fx_data), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
