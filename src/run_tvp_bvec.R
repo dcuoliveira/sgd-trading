@@ -108,7 +108,7 @@ tvp_bvec_out <- draw_posterior(temp, mc.cores = num_cores, verbose = TRUE)
 end_time <- Sys.time()
 print(paste0("Elapsed time: ", end_time - start_time))
 
-tvp_bvec_out$runtime <- end_time - start_time
+# tvp_bvec_out$runtime <- end_time - start_time
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
 
