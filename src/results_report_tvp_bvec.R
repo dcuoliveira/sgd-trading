@@ -8,7 +8,8 @@ MODEL_NAME = "tvp-bvec"
 files = list.files(file.path(OUTPUT_PATH, MODEL_NAME))
 
 # get file name
-file = files[2]
+file = files[1]
+print(file)
 
 # load results
 results = readRDS(file.path(OUTPUT_PATH, MODEL_NAME, file))
