@@ -44,6 +44,9 @@ ITERATIONS <- args$iterations
 BURNIN <- args$burnin
 RANK <- 1:2
 
+# make clusters
+cl <- makeCluster(num_cores)
+
 # load data
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
@@ -102,7 +105,7 @@ temp <- add_priors(
   )
 
 # Run Gibbs sampler
-tvp_bvec_out <- draw_posterior(temp, verbose = TRUE)
+tvp_bvec_out <- draw_posterior(temp, mc.cores = num_cores, verbose = TRUE)
 
 # end timer
 end_time <- Sys.time()
