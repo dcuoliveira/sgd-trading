@@ -105,7 +105,7 @@ temp <- add_priors(
   )
 
 # Run Gibbs sampler
-tvp_bvec_out <- draw_posterior(temp, mc.cores = num_cores, verbose = TRUE)
+tvp_bvec_out <- draw_posterior(temp, verbose = TRUE)
 
 # end timer
 end_time <- Sys.time()
