@@ -34,6 +34,7 @@ for (i in 1:length(results)) {
   # break list
   tmp = results[[i]]
   tmp_names = names(tmp)
+  print(tmp_names)
 
   if (!is.null(tmp_names)) {
     for (n in tmp_names) {
@@ -51,7 +52,7 @@ for (i in 1:length(results)) {
   else {
     file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
     print(file)
-    
+
     saveRDS(tmp, file = file)
   }
 }
