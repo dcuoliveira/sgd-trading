@@ -9,9 +9,6 @@ library("bvartools")
 # Load data
 data("us_macrodata")
 
-# # Plot the data
-# plot(us_macrodata)
-
 # Generate the basic model
 temp <- gen_vec(
   data = us_macrodata, # endogenous variables
@@ -30,8 +27,6 @@ temp <- gen_vec(
   burnin = 100 # number of mcmc draws to initialize the sampler
                 )
 
-start_time <- Sys.time()
-
 # Add priors to the "empty" models
 temp <- add_priors(
   temp,
@@ -47,32 +42,11 @@ temp <- add_priors(
   )
 
 # Run Gibbs sampler
-result <- draw_posterior(temp)
+results <- draw_posterior(temp)
 
-end_time <- Sys.time()
-difference <- difftime(end_time, start_time, units='mins')
-print(difference)
+# Break and save the outputs
+for (i in 1:length(results)) {
+  file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
+  saveRDS(results[i], file = file)
+}
 
-# Get test statistics for the models to select the final one
-tests <- summary(result)
-tests
-
-# Plot the posterior draws of each model
-plot(result)
-
-# Translate the final model into VAR
-res_var <- bvec_to_bvar(result[[3]])
-
-# General summary stats the model
-summary(res_var)
-
-# Plot the VAR draws
-plot(res_var)
-
-# Forecasting
-prd <- predict(res_var, n.ahead = 10, new_d = rep(1, 10))
-plot(prd)
-
-# Impulse response
-ir <- irf(res_var, impulse = "r", response = "Dp", type = "gir")
-plot(ir)
