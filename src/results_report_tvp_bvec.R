@@ -1,26 +1,35 @@
-rm(list=ls())
+rm(list = ls())
+library("optparse")
 library("here")
 
-OUTPUT_PATH = file.path(here(), 'src', 'data', 'outputs')
-MODEL_NAME = "tvp-bvec"
+# define command-line options
+option_list <- list(
+  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
+  make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100)
+)
+
+# create a parser object
+parser <- OptionParser(option_list = option_list)
+
+# parse the arguments
+args <- parse_args(parser)
+
+MODEL <- args$model_name
+OUTPUT_PATH <- file.path(args$output_path, MODEL)
+SCALE_TYPE <- args$scale_type
+ITERATIONS <- args$iterations
+BURNIN <- args$burnin
+RANK <- 1:2
+
+FINAL_RANK <- paste0(RANK, collapse = "-")
+
+output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
 
 # list files in dir
-files = list.files(file.path(OUTPUT_PATH, MODEL_NAME))
+results = readRDS(file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
+results[[length(results)]] <- NULL
 
-# get file name
-file = files[1]
-print(file)
-
-# load results
-results = readRDS(file.path(OUTPUT_PATH, MODEL_NAME, file))
-
-# print model name
-print(paste0("Model: ", file))
-
-# print model results
-summary(results)
-
-# print time to run model
-print(paste0("Time to run: ", round(results$runtime, 1), " hours"))
-
-results
+bvartools::summary.bvarlist(results)
