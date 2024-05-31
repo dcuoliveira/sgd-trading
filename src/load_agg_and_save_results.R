@@ -1,3 +1,4 @@
+rm(list=ls())
 library("optparse")
 library("here")
 
@@ -35,17 +36,34 @@ out1 = list()
 out2 = list()
 out3 = list()
 for (f in files) {
-
   tmp_param_name = strsplit(f, ".rds")[[1]]
   tmp_params = strsplit(tmp_param_name, "_")[[1]][3:length(strsplit(tmp_param_name, "_")[[1]])]
 
   if (tmp_params[1] == 1){
     tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
-    out1[[tmp_params[2]]] = tmp
+    if (tmp_params[2] == "x"){
+      out_param_name = "x_d"
+    }
+    else if ((tmp_params[2] == "C")&(tmp_params[3] == "sigma")){
+      out_param_name = "C_sigma"
+    }
+    else{
+      out_param_name = tmp_params[2]
+    }
+    out1[[out_param_name]] = tmp
   }
   else if (tmp_params[1] == 2) {
-     tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
-    out2[[tmp_params[2]]] = tmp
+    tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
+    if (tmp_params[2] == "x"){
+      out_param_name = "x_d"
+    }
+    else if ((tmp_params[2] == "C")&(tmp_params[3] == "sigma")){
+      out_param_name = "C_sigma"
+    }
+    else{
+      out_param_name = tmp_params[2]
+    }
+    out2[[out_param_name]] = tmp
   }
   else if (tmp_params[1] == 3){
     tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
@@ -54,6 +72,18 @@ for (f in files) {
   }
 
 }
+
+# reorder lists
+desired_order <- c("y", "w", "x_d", "alpha", "beta", "Pi", "C", "C_sigma", "Sigma", "specifications")
+
+# 1
+order <- desired_order[desired_order %in% names(out1)]
+out1 = out1[order]
+
+# 2
+order <- desired_order[desired_order %in% names(out1)]
+out2 = out2[order]
+
 out = list(out1, out2, out3)
 
 # save the results
