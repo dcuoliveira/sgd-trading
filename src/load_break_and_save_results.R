@@ -42,6 +42,7 @@ for (i in 1:length(results)) {
 
       # file name
       file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", n, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
+      print(file)
 
       # save results
       saveRDS(output, file = file)
@@ -49,6 +50,8 @@ for (i in 1:length(results)) {
   }
   else {
     file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
+    print(file)
+    
     saveRDS(tmp, file = file)
   }
 }
