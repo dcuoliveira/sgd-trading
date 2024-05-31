@@ -9,8 +9,8 @@ library("bvartools")
 # Load data
 data("us_macrodata")
 
-# Plot the data
-plot(us_macrodata)
+# # Plot the data
+# plot(us_macrodata)
 
 # Generate the basic model
 temp <- gen_vec(
@@ -27,7 +27,7 @@ temp <- gen_vec(
   sv = FALSE, # if time varying error variances should be added (stoch vol)
   fcst = NULL, # number of observations saved for forecasting
   iterations = 100, # mcmc draws excluding burn-in
-  burnin = 5000 # number of mcmc draws to initialize the sampler
+  burnin = 100 # number of mcmc draws to initialize the sampler
                 )
 
 start_time <- Sys.time()
