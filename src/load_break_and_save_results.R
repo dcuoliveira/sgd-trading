@@ -19,6 +19,8 @@ args <- parse_args(parser)
 MODEL <- args$model_name
 OUTPUT_PATH <- file.path(args$output_path, MODEL)
 SCALE_TYPE <- args$scale_type
+ITERATIONS <- args$iterations
+BURNIN <- args$burnin
 RANK <- 1:2
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
