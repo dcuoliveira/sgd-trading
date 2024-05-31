@@ -33,3 +33,6 @@ for (i in 1:length(results)) {
   file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
   saveRDS(results[i], file = file)
 }
+
+# delete the original file
+file.remove(file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
