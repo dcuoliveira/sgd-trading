@@ -16,6 +16,7 @@ parser <- OptionParser(option_list = option_list)
 # parse the arguments
 args <- parse_args(parser)
 
+MODEL <- args$model_name
 OUTPUT_PATH <- file.path(args$output_path, MODEL)
 SCALE_TYPE <- args$scale_type
 RANK <- 1:2
