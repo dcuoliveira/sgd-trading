@@ -79,10 +79,12 @@ desired_order <- c("y", "w", "x_d", "alpha", "beta", "Pi", "C", "C_sigma", "Sigm
 # 1
 order <- desired_order[desired_order %in% names(out1)]
 out1 = out1[order]
+attr(out1, "class") <- "bvec"
 
 # 2
 order <- desired_order[desired_order %in% names(out1)]
 out2 = out2[order]
+attr(out2, "class") <- "bvec"
 
 out = list(out1, out2, out3)
 
