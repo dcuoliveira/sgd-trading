@@ -65,7 +65,7 @@ if (SCALE_TYPE == "scale"){
 }
 
 # change to ts format
-tsdata <- ts(data, start = 1, end = nrow(data), frequency = 52)
+tsdata <- as.ts(data, start = 1, end = nrow(data), frequency = 52)
 
 # generate BVEC model
 temp <- gen_vec(
