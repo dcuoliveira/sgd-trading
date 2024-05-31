@@ -46,7 +46,30 @@ results <- draw_posterior(temp)
 
 # Break and save the outputs
 for (i in 1:length(results)) {
-  file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
-  saveRDS(results[i], file = file)
+  # break list
+  tmp = results[[i]]
+  tmp_names = names(tmp)
+
+  if (!is.null(tmp_names)) {
+    for (n in tmp_names) {
+      # parse tmp obj
+      output = tmp[[n]]
+
+      # file name
+      file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", name, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
+
+      # save results
+      saveRDS(output, file = file)
+    }
+  }
+  else {
+    file = file.path(OUTPUT_PATH, paste0("model_results_", i, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds"))
+    saveRDS(tmp, file = file)
+  }
 }
 
+i=1
+tmp=results[[i]]
+
+# list objects inside
+names(tmp)
