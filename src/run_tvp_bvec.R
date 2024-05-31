@@ -45,6 +45,8 @@ ITERATIONS <- args$iterations
 BURNIN <- args$burnin
 RANK <- 1:2
 
+output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
+
 # load data
 data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
@@ -114,4 +116,4 @@ tvp_bvec_out$runtime <- end_time - start_time
 FINAL_RANK <- paste0(RANK, collapse = "-")
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
+saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
