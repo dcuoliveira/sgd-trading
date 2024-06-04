@@ -43,7 +43,7 @@ SCALE_TYPE <- args$scale_type
 num_cores <- args$num_cores
 ITERATIONS <- args$iterations
 BURNIN <- args$burnin
-RANK <- 1:2
+RANK <- 2:3
 
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
 
