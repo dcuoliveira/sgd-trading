@@ -45,6 +45,7 @@ ITERATIONS <- args$iterations
 BURNIN <- args$burnin
 RANK <- 2:3
 
+FINAL_RANK <- paste0(RANK, collapse = "-")
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
 
 # load data
@@ -112,8 +113,6 @@ end_time <- Sys.time()
 print(paste0("Elapsed time: ", end_time - start_time))
 
 tvp_bvec_out$runtime <- end_time - start_time
-
-FINAL_RANK <- paste0(RANK, collapse = "-")
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
