@@ -1,6 +1,9 @@
 rm(list = ls())
 library("optparse")
 library("here")
+library("dplyr")
+library("ggplot2")
+library("data.table")
 
 # define command-line options
 option_list <- list(
@@ -32,4 +35,40 @@ output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BU
 results = readRDS(file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
 results[[length(results)]] <- NULL
 
+# summary of models
 bvartools::summary.bvarlist(results)
+
+# chosen model
+i = 2
+object <- results[[i]]
+level_model <- object
+difference_model = bvartools::bvec_to_bvar(results[[i]])
+
+# summary of the final model
+level_model_summary = summary(level_model)
+difference_model_summary = summary(difference_model)
+
+# plot tim-varying betas
+par(mfrow = c(1, 1))
+tvp_betas = list()
+for (k in 1:ncol(object$beta[[1]])) {
+  draws <- lapply(object$beta, function(x) {quantile(x[, k], probs = c(.5))})
+  draws <- matrix(unlist(draws), ncol = 1, byrow = TRUE)
+  tvp_betas[[k]] <- draws
+}
+tvp_betas_df = do.call(cbind, tvp_betas)
+
+plot(tvp_betas_df[,2], type = "l", col = 1, lwd = 2, xlab = "Time", ylab = "Beta", main = "Time-varying betas")
+
+# plot tim-varying alphas
+par(mfrow = c(1, 1))
+tvp_alphas = list()
+for (k in 1:ncol(object$alpha[[1]])) {
+  draws <- lapply(object$alpha, function(x) {quantile(x[, k], probs = c(.5))})
+  draws <- matrix(unlist(draws), ncol = 1, byrow = TRUE)
+  tvp_alphas[[k]] <- draws
+}
+tvp_alphas_df = do.call(cbind, tvp_alphas)
+
+ref = 8
+plot.ts(tvp_alphas_df[,c(ref, ref+12)], type = "l", col = 1:2, lwd = 2, xlab = "Time", ylab = "Beta", main = "Time-varying alphas")
