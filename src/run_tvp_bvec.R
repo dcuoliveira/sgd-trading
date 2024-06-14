@@ -26,7 +26,8 @@ option_list <- list(
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
   make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100)
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
+  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
 )
 
 # create a parser object
@@ -43,7 +44,7 @@ SCALE_TYPE <- args$scale_type
 num_cores <- args$num_cores
 ITERATIONS <- args$iterations
 BURNIN <- args$burnin
-RANK <- 1:3
+RANK <- args$rank
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
@@ -76,7 +77,7 @@ temp <- gen_vec(
   p = 1, # endogenous variables lag order (var model)
   exogen = NULL, # exogenous variables
   s = NULL, # exogenous variables lag order
-  r = RANK, # cointegration rank. It tests r = (0, 1, 2).
+  r = as.integer(RANK[1]):as.integer(RANK[length(RANK)]), # cointegration rank. It tests r = (0, 1, 2).
   const = "unrestricted", # if a constant should be added to the error correction term (restricted) or the non-cointegration term (restricted)
   trend = NULL, # if a trend should be added to the error correction term (restricted) or the non-cointegration term (restricted)
   seasonal = NULL, # if seasonal dummies should be added to the error correction term (restricted) or the non-cointegration term (restricted)
