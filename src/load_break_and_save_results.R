@@ -28,7 +28,9 @@ RANK <- args$rank
 FINAL_RANK <- paste0(RANK, collapse = "-")
 
 # load the results
-results = readRDS(file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
+file_name = paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")
+output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
+results = readRDS(file.path(OUTPUT_PATH, output_reference, file_name))
 
 # break and save the results
 # Break and save the outputs
