@@ -2,6 +2,28 @@ library('padr')
 library('lubridate')
 library('zoo')
 
+rename_tvp_params = function(p,
+                             names,
+                             df){
+  idx = 1
+  for (lag in 0:p) {
+
+    if (lag == 0){
+      for (name in colnames(names)){
+        df = df %>% rename(!!paste0(name, "_level") := !!paste0("V", idx))
+          idx = idx + 1
+      }
+    }
+    else {
+      for (name in colnames(names)){
+        df = df %>% rename(!!paste0(name, "_diffs_", lag) := !!paste0("V", idx))
+          idx = idx + 1
+      }
+    }
+  }
+  return(df)
+}
+
 load_package <- function(package) {
   tryCatch(
     {
