@@ -1,3 +1,4 @@
+rm(list=ls())
 library("optparse")
 library("here")
 
@@ -8,7 +9,7 @@ option_list <- list(
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
   make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
-  make_option(c("--rank"), type = "integer", help = "Rank", default = 1:3)
+  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
 )
 
 # create a parser object
