@@ -7,7 +7,8 @@ option_list <- list(
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100)
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
+  make_option(c("--rank"), type = "integer", help = "Rank", default = 1:3)
 )
 
 # create a parser object
@@ -21,7 +22,7 @@ OUTPUT_PATH <- file.path(args$output_path, MODEL)
 SCALE_TYPE <- args$scale_type
 ITERATIONS <- args$iterations
 BURNIN <- args$burnin
-RANK <- 1:2
+RANK <- args$rank
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
 
