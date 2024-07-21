@@ -36,6 +36,7 @@ files <- list.files(file.path(OUTPUT_PATH, output_reference))
 out1 = list()
 out2 = list()
 out3 = list()
+out4 = list()
 for (f in files) {
   tmp_param_name = strsplit(f, ".rds")[[1]]
   tmp_params = strsplit(tmp_param_name, "_")[[1]][3:length(strsplit(tmp_param_name, "_")[[1]])]
@@ -66,9 +67,22 @@ for (f in files) {
     }
     out2[[out_param_name]] = tmp
   }
-  else if (tmp_params[1] == 3){
+  else if (tmp_params[1] == 3) {
     tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
-    out3 = tmp
+    if (tmp_params[2] == "x"){
+      out_param_name = "x_d"
+    }
+    else if ((tmp_params[2] == "C")&(tmp_params[3] == "sigma")){
+      out_param_name = "C_sigma"
+    }
+    else{
+      out_param_name = tmp_params[2]
+    }
+    out3[[out_param_name]] = tmp
+  }
+  else if (tmp_params[1] == 4){
+    tmp = readRDS(file.path(OUTPUT_PATH, output_reference, f))
+    out4 = tmp
   
   }
 
@@ -83,11 +97,16 @@ out1 = out1[order]
 attr(out1, "class") <- "bvec"
 
 # 2
-order <- desired_order[desired_order %in% names(out1)]
+order <- desired_order[desired_order %in% names(out2)]
 out2 = out2[order]
 attr(out2, "class") <- "bvec"
 
-out = list(out1, out2, out3)
+# 3
+order <- desired_order[desired_order %in% names(out3)]
+out3 = out3[order]
+attr(out3, "class") <- "bvec"
+
+out = list(out1, out2, out3, out4)
 
 # save the results
 saveRDS(out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))

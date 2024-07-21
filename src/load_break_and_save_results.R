@@ -7,8 +7,8 @@ option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 10000),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 5000),
   make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
 )
 
