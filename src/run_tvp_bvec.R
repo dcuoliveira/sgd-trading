@@ -20,6 +20,7 @@ source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
+    make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
@@ -38,6 +39,7 @@ args <- parse_args(parser)
 
 MODEL <- args$model_name
 OUTPUT_PATH <- file.path(args$output_path, MODEL)
+FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
 MEAN_WINDOW_SIZE <- args$mean_window_size
 SCALE_TYPE <- args$scale_type
@@ -50,7 +52,7 @@ FINAL_RANK <- paste0(RANK, collapse = "-")
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
 
 # load data
-data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
