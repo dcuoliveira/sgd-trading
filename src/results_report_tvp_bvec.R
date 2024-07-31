@@ -18,8 +18,8 @@ option_list <- list(
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
-  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 10000),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 5000),
   make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
 )
 
@@ -52,68 +52,68 @@ results = readRDS(file.path(OUTPUT_PATH, output_reference, paste0("model_results
 results[[length(results)]] <- NULL
 
 # summary of models
-bvartools::summary.bvarlist(results)
+print(bvartools::summary.bvarlist(results))
 
-# chosen model
-r = 2
-object <- results[[r]]
-level_model <- object
-difference_model = bvartools::bvec_to_bvar(results[[r]])
+# # chosen model
+# r = 2
+# object <- results[[r]]
+# level_model <- object
+# difference_model = bvartools::bvec_to_bvar(results[[r]])
 
-# summary of the final model
-level_model_summary = summary(level_model)
-difference_model_summary = summary(difference_model)
+# # summary of the final model
+# level_model_summary = summary(level_model)
+# difference_model_summary = summary(difference_model)
 
-# plot tim-varying betas
-tvp_betas = list()
-for (k in 1:ncol(object$beta[[1]])) {
-  draws <- lapply(object$beta, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
-  draws <- matrix(unlist(draws), ncol = 1, byrow = TRUE)
-  tvp_betas[[k]] <- draws
-}
-# tvp_betas_df = do.call(cbind, tvp_betas) %>% as.data.table()
+# # plot tim-varying betas
+# tvp_betas = list()
+# for (k in 1:ncol(object$beta[[1]])) {
+#   draws <- lapply(object$beta, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
+#   draws <- matrix(unlist(draws), ncol = 1, byrow = TRUE)
+#   tvp_betas[[k]] <- draws
+# }
+# # tvp_betas_df = do.call(cbind, tvp_betas) %>% as.data.table()
 
-# create beta names
-idx = 1
-tmp_df = tvp_betas[[idx]] %>% as.data.table() %>% mutate(date = date)
+# # create beta names
+# idx = 1
+# tmp_df = tvp_betas[[idx]] %>% as.data.table() %>% mutate(date = date)
 
-# plot with confidence interval add red line on zero
-ggplot(tmp_df, aes(x=date)) + 
-  geom_line(aes(y=V2)) +
-  geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
-  geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
+# # plot with confidence interval add red line on zero
+# ggplot(tmp_df, aes(x=date)) + 
+#   geom_line(aes(y=V2)) +
+#   geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
+#   geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
 
-# create beta names
-# tvp_betas_df = rename_tvp_params(names = names, p = p, df = tvp_alphas_df)
+# # create beta names
+# # tvp_betas_df = rename_tvp_params(names = names, p = p, df = tvp_alphas_df)
 
-# plot tim-varying alphas
-tvp_alphas = list()
-for (k in 1:ncol(object$alpha[[1]])) {
-  draws <- lapply(object$alpha, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
-  draws <- matrix(unlist(draws), ncol = 3, byrow = TRUE)
-  tvp_alphas[[k]] <- draws
-}
-# tvp_alphas_df = do.call(cbind, tvp_alphas) %>% as.data.table()
+# # plot tim-varying alphas
+# tvp_alphas = list()
+# for (k in 1:ncol(object$alpha[[1]])) {
+#   draws <- lapply(object$alpha, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
+#   draws <- matrix(unlist(draws), ncol = 3, byrow = TRUE)
+#   tvp_alphas[[k]] <- draws
+# }
+# # tvp_alphas_df = do.call(cbind, tvp_alphas) %>% as.data.table()
 
-# create beta names
-idx = 3 + 12
-tmp_df = tvp_alphas[[idx]] %>% as.data.table() %>% mutate(date = date)
+# # create beta names
+# idx = 3 + 12
+# tmp_df = tvp_alphas[[idx]] %>% as.data.table() %>% mutate(date = date)
 
-# plot with confidence interval add red line on zero
-ggplot(tmp_df, aes(x=date)) + 
-  geom_line(aes(y=V2)) +
-  geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
-  geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
+# # plot with confidence interval add red line on zero
+# ggplot(tmp_df, aes(x=date)) + 
+#   geom_line(aes(y=V2)) +
+#   geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
+#   geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
 
-pp.test(x = tmp_df$V2, type = "Z(alpha)")
+# pp.test(x = tmp_df$V2, type = "Z(alpha)")
 
-hist(tmp_df$V2, breaks = 75, col = "lightblue")
+# hist(tmp_df$V2, breaks = 75, col = "lightblue")
 
-#create historgram with density and 95% confidence interval highlighted
-ggplot(tmp_df, aes(x=V2)) + 
-  geom_histogram(aes(y=..density..), bins = 75, fill = "lightblue") +
-  geom_density(alpha = 0.2) +
-  geom_vline(aes(xintercept = 0), color = "red", linetype = "dashed", size = 1) 
+# #create historgram with density and 95% confidence interval highlighted
+# ggplot(tmp_df, aes(x=V2)) + 
+#   geom_histogram(aes(y=..density..), bins = 75, fill = "lightblue") +
+#   geom_density(alpha = 0.2) +
+#   geom_vline(aes(xintercept = 0), color = "red", linetype = "dashed", size = 1) 
   
 
 
