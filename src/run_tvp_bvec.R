@@ -20,7 +20,7 @@ source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
-    make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
+  make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
