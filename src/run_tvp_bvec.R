@@ -118,4 +118,4 @@ print(paste0("Elapsed time: ", end_time - start_time))
 tvp_bvec_out$runtime <- end_time - start_time
 
 dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
-saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
+saveRDS(tvp_bvec_out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", FREQ, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
