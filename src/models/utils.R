@@ -1,6 +1,7 @@
 library('padr')
 library('lubridate')
 library('zoo')
+library("timeDate")
 
 rename_tvp_params = function(p,
                              names,
@@ -106,11 +107,15 @@ data_frame_to_ts_list = function(df,
   
 }
 
-resample_data = function(df){
+resample_data = function(df, freq){
   # create missing days and delete weekends
-  df = df %>% mutate(date=ymd(date)) %>% pad() %>%
-    mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>% select(-weekday)
+  df = df %>% mutate(date=ymd(date)) %>% pad()
   
+  if (freq == 'weekly'){
+    df = df %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>% select(-weekday)
+  }else {
+     
+  }
   # fill na's forward
   dtref <- df$date
   df <- df %>% select(-date) %>% lapply(function(x) {na.locf(na.locf(x), fromLast=T)}) %>% do.call(cbind, .) %>% as.data.table() %>%
@@ -119,16 +124,56 @@ resample_data = function(df){
   return(df)
 }
 
-load_and_resample_currencies = function(){
-  fx_data = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>%
-    pad() %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
-    select(-weekday, -USD.Curncy)
-  
-  fx_data = na.locf(na.locf(fx_data), fromLast = TRUE)
-  colnames(fx_data) = unlist(lapply(colnames(fx_data), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
-  rownames(fx_data) = fx_data$date
+# Define the function to resample weekly data to monthly
+resample_to_monthly <- function(data) {
+  return(data %>%
+    # Ensure the date column is of Date type
+    mutate(date = as.Date(date)) %>%
+    # Group by year and month
+    group_by(year = year(date), month = month(date)) %>%
+    # Summarize by taking the last entry of each group
+    summarise(across(everything(), last)) %>%
+    ungroup() %>%
+    # Create a proper date column for the first day of the month
+    mutate(date = as.Date(paste(year, month, "01", sep = "-"))) %>%
+    # Select the columns in the desired order
+    select(date, everything(), -year, -month))
+}
 
-  return(fx_data)
+load_and_resample_currencies = function(freq){
+  
+  orig_df = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>% pad()
+    
+  if (freq == 'weekly'){
+    out_df = orig_df %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
+      select(-weekday, -USD.Curncy)
+  }else if (freq == 'monthly'){
+    out_df <- orig_df %>%
+      mutate(date = as.Date(date))
+
+    # Create a timeDate object for business day calculations
+    data_timeDate <- as.timeDate(out_df$date)
+    out_df$isBizday <- isBizday(data_timeDate)
+    
+    # Group by year and month
+    grouped_data <- out_df %>%
+      group_by(year = year(date), month = month(date)) %>%
+      # Summarize to find the last business day of each month
+      summarise(last_biz_day = max(date[isBizday])) %>%
+      ungroup()
+
+    # Join with the original data to get the rows corresponding to the last business day
+    out_df <- grouped_data %>%
+      left_join(out_df, by = c("last_biz_day" = "date")) %>%
+      select(last_biz_day, everything(), -year, -month, -USD.Curncy, -isBizday) %>%
+      rename(date = last_biz_day) %>% as.data.table()
+  }
+  
+  out_df = na.locf(na.locf(out_df), fromLast = TRUE)
+  colnames(out_df) = unlist(lapply(colnames(out_df), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
+  rownames(out_df) = out_df$date
+
+  return(out_df)
 }
 
 merge_fx_sneer_data = function(){
