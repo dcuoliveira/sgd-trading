@@ -20,15 +20,15 @@ source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
-    make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
+  make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
   make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
   make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
   make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
-  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
+  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2)
 )
 
 # create a parser object
