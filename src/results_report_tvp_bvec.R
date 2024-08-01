@@ -17,10 +17,11 @@ option_list <- list(
   make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
-  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 10000),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 5000),
-  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3)
+  make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = 1),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
+  make_option(c("--rank"), type = "character", help = "Rank", default = 1:3),
+  make_option(c("--freq"), type = "character", help = "Frequency", default = "monthly")
 )
 
 # create a parser object
@@ -37,18 +38,19 @@ BURNIN <- args$burnin
 RANK <- args$rank
 WINDOW_SIZE <- args$window_size
 p <- 1
+FREQ <- args$freq
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
 
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
 
 # read currencies data
-currencies <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+currencies <- load_and_resample_currencies(freq="monthly") %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 date <- currencies$date[(WINDOW_SIZE + 1):length(currencies$date)]
 currencies <- currencies %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
 # list files in dir
-results = readRDS(file.path(OUTPUT_PATH, output_reference, paste0("model_results_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
+results = readRDS(file.path(OUTPUT_PATH, output_reference, paste0("model_results_", FREQ, "_", SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN, ".rds")))
 results[[length(results)]] <- NULL
 
 # summary of models
