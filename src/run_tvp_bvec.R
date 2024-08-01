@@ -21,14 +21,14 @@ option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
-  make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 52 * 1),
+  make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 12),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
   make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
   make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
   make_option(c("--rank"), type = "character", help = "Rank", default = 1:3),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2)
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 24)
 )
 
 # create a parser object
@@ -47,6 +47,12 @@ num_cores <- args$num_cores
 ITERATIONS <- args$iterations
 BURNIN <- args$burnin
 RANK <- args$rank
+
+if (FREQ == "monthly"){
+  FREQ_INT <- 12
+}else if (FREQ == "weekly"){
+  FREQ_INT <- 52
+}
 
 FINAL_RANK <- paste0(RANK, collapse = "-")
 output_reference <- paste0(SCALE_TYPE, "_", FINAL_RANK, "_", ITERATIONS, "_", BURNIN)
@@ -71,7 +77,7 @@ if (SCALE_TYPE == "scale"){
 }
 
 # change to ts format
-tsdata <- as.ts(data, start = 1, end = nrow(data), frequency = 52)
+tsdata <- as.ts(data, start = 1, end = nrow(data), frequency = FREQ_INT)
 
 # generate BVEC model
 temp <- gen_vec(
