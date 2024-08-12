@@ -3,24 +3,16 @@ library('lubridate')
 library('zoo')
 library("timeDate")
 
-rename_tvp_params = function(p,
-                             names,
-                             df){
-  idx = 1
-  for (lag in 0:p) {
-
-    if (lag == 0){
-      for (name in colnames(names)){
-        df = df %>% rename(!!paste0(name, "_level") := !!paste0("V", idx))
-          idx = idx + 1
-      }
+rename_tvp_params = function(df, names, r) {
+  k = 1
+  j = 1
+  for (i in 1:dim(df)[2]){
+    if (k > length(names)){
+      j = j + 1
+      k = 1
     }
-    else {
-      for (name in colnames(names)){
-        df = df %>% rename(!!paste0(name, "_diffs_", lag) := !!paste0("V", idx))
-          idx = idx + 1
-      }
-    }
+    colnames(df)[i] = paste0(names[k], "_r", j)
+    k = k + 1
   }
   return(df)
 }
