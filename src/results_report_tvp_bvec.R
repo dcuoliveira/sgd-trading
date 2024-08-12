@@ -14,11 +14,11 @@ option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 10000),
-  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 5000),
+  make_option(c("--iterations"), type = "integer", help = "Number of iterations", default = 100),
+  make_option(c("--burnin"), type = "integer", help = "Burnin", default = 100),
   make_option(c("--rank"), type = "character", help = "Rank", default = 1:3),
-  make_option(c("--freq"), type = "character", help = "Frequency", default = "monthly"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 12)
+  make_option(c("--freq"), type = "character", help = "Frequency", default = "weekly"),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 108)
 )
 
 # create a parser object
@@ -56,73 +56,73 @@ results[[length(results)]] <- NULL
 print(bvartools::summary.bvarlist(results))
 
 # if error, delete the last element and re-run
-results[[length(results)]] <- NULL
-print(bvartools::summary.bvarlist(results))
+# results[[length(results)]] <- NULL
+# print(bvartools::summary.bvarlist(results))
 
 # if error, delete the last element and re-run
-results[[length(results)]] <- NULL
-print(bvartools::summary.bvarlist(results))
+# results[[length(results)]] <- NULL
+# print(bvartools::summary.bvarlist(results))
 
-# # chosen model
-# r = 2
-# object <- results[[r]]
-# level_model <- object
-# difference_model = bvartools::bvec_to_bvar(results[[r]])
+# chosen model
+r = 3
+object <- results[[r]]
+level_model <- object
+difference_model = bvartools::bvec_to_bvar(object)
 
-# # summary of the final model
-# level_model_summary = summary(level_model)
-# difference_model_summary = summary(difference_model)
+# summary of the final model
+level_model_summary = summary(level_model)
+difference_model_summary = summary(difference_model)
 
-# # plot tim-varying betas
-# tvp_betas = list()
-# for (k in 1:ncol(object$beta[[1]])) {
-#   draws <- lapply(object$beta, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
-#   draws <- matrix(unlist(draws), ncol = 1, byrow = TRUE)
-#   tvp_betas[[k]] <- draws
-# }
-# # tvp_betas_df = do.call(cbind, tvp_betas) %>% as.data.table()
+# extract tim-varying betas
+center = 0.5
+upper = 0.83
+lower = 0.17
+tvp_betas_center = list()
+tvp_betas_lower = list()
+tvp_betas_upper = list()
+for (k in 1:ncol(object$beta[[1]])) {
+  draws <- lapply(object$beta, function(x) {quantile(x[, k], probs = c(lower, center, upper))})
+  draws <- matrix(unlist(draws), ncol = 3, byrow = TRUE)
+  tvp_betas_center[[k]] <- draws[, 2]
+  tvp_betas_lower[[k]] <- draws[, 1]
+  tvp_betas_upper[[k]] <- draws[, 3]
+}
+tvp_betas_center_df = do.call(cbind, tvp_betas_center) %>% as.data.table() 
+tvp_betas_lower_df = do.call(cbind, tvp_betas_lower) %>% as.data.table()
+tvp_betas_upper_df = do.call(cbind, tvp_betas_upper) %>% as.data.table()
 
-# # create beta names
-# idx = 1
-# tmp_df = tvp_betas[[idx]] %>% as.data.table() %>% mutate(date = date)
+# create beta names
+tvp_betas_center_df = rename_tvp_params(df = tvp_betas_center_df, names = colnames(currencies), r = r)
+tvp_betas_lower_df = rename_tvp_params(df = tvp_betas_lower_df, names = colnames(currencies), r = r)
+tvp_betas_upper_df = rename_tvp_params(df = tvp_betas_upper_df, names = colnames(currencies), r = r)
 
-# # plot with confidence interval add red line on zero
-# ggplot(tmp_df, aes(x=date)) + 
-#   geom_line(aes(y=V2)) +
-#   geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
-#   geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
+# extract tim-varying alphas
+tvp_alphas_center = list()
+tvp_alphas_lower = list()
+tvp_alphas_upper = list()
+for (k in 1:ncol(object$alpha[[1]])) {
+  draws <- lapply(object$alpha, function(x) {quantile(x[, k], probs = c(lower, center, upper))})
+  draws <- matrix(unlist(draws), ncol = 3, byrow = TRUE)
+  tvp_alphas_center[[k]] <- draws[, 2]
+  tvp_alphas_lower[[k]] <- draws[, 1]
+  tvp_alphas_upper[[k]] <- draws[, 3]
+}
+tvp_alphas_center_df = do.call(cbind, tvp_alphas_center) %>% as.data.table()
+tvp_alphas_lower_df = do.call(cbind, tvp_alphas_lower) %>% as.data.table()
+tvp_alphas_upper_df = do.call(cbind, tvp_alphas_upper) %>% as.data.table()
 
-# # create beta names
-# # tvp_betas_df = rename_tvp_params(names = names, p = p, df = tvp_alphas_df)
+# create alpha names
+tvp_alphas_center_df = rename_tvp_params(df = tvp_alphas_center_df, names = colnames(currencies), r = r)
+tvp_alphas_lower_df = rename_tvp_params(df = tvp_alphas_lower_df, names = colnames(currencies), r = r)
+tvp_alphas_upper_df = rename_tvp_params(df = tvp_alphas_upper_df, names = colnames(currencies), r = r)
 
-# # plot tim-varying alphas
-# tvp_alphas = list()
-# for (k in 1:ncol(object$alpha[[1]])) {
-#   draws <- lapply(object$alpha, function(x) {quantile(x[, k], probs = c(0.05, .5, 0.95))})
-#   draws <- matrix(unlist(draws), ncol = 3, byrow = TRUE)
-#   tvp_alphas[[k]] <- draws
-# }
-# # tvp_alphas_df = do.call(cbind, tvp_alphas) %>% as.data.table()
+betas = list(center = tvp_betas_center_df, lower = tvp_betas_lower_df, upper = tvp_betas_upper_df)
+alphas = list(center = tvp_alphas_center_df, lower = tvp_alphas_lower_df, upper = tvp_alphas_upper_df)
+output = list(betas = betas, alphas = alphas)
 
-# # create beta names
-# idx = 3 + 12
-# tmp_df = tvp_alphas[[idx]] %>% as.data.table() %>% mutate(date = date)
-
-# # plot with confidence interval add red line on zero
-# ggplot(tmp_df, aes(x=date)) + 
-#   geom_line(aes(y=V2)) +
-#   geom_ribbon(aes(ymin=V1, ymax=V3), alpha=0.2) +
-#   geom_hline(yintercept = 0, linetype="dashed", color = "red", size = 2)
-
-# pp.test(x = tmp_df$V2, type = "Z(alpha)")
-
-# hist(tmp_df$V2, breaks = 75, col = "lightblue")
-
-# #create historgram with density and 95% confidence interval highlighted
-# ggplot(tmp_df, aes(x=V2)) + 
-#   geom_histogram(aes(y=..density..), bins = 75, fill = "lightblue") +
-#   geom_density(alpha = 0.2) +
-#   geom_vline(aes(xintercept = 0), color = "red", linetype = "dashed", size = 1) 
+dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
+file_name = paste0("betas_alphas_", FREQ, "_", SCALE_TYPE, "_r=", r, "_", ITERATIONS, "_", BURNIN, ".rds")
+saveRDS(output, file.path(OUTPUT_PATH, output_reference, file_name))
   
 
 
