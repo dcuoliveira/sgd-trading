@@ -1,4 +1,5 @@
 rm(list=ls())
+library('here')
 library('dplyr')
 library("tidyr")
 library("data.table")
@@ -7,39 +8,93 @@ library("lubridate")
 
 source(file.path(getwd(), 'src', 'models', 'utils.R'))
 source(file.path(getwd(), 'src', 'models', 'models.R'))
+source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
-MODEL <- "dlm"
-STRATEGY_TYPE <- "ewma"
-OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
-TARGET <- "SGD"
-SCALE_TYPE <- "rolling_scale"
-BETAS_TYPE <- "filter"
+# define command-line options
+option_list <- list(
+  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "rolling-ols"),
+  make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
+  make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 48),
+  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
+  make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
+  make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
+  make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.4)
+)
+
+# create a parser object
+parser <- OptionParser(option_list = option_list)
+
+# parse the arguments
+args <- parse_args(parser)
+
+MODEL <- args$model_name
+STRATEGY_TYPE <- args$strategy_type
+OUTPUT_PATH <- file.path(args$output_path, MODEL)
+TARGET <- args$target
+SCALE_TYPE <- args$scale_type
+BETAS_TYPE <- args$betas_type
+FREQ = args$frequency
+WINDOW_SIZE <- args$window_size
+THRESHOLD <- as.numeric(args$threshold)
+
+output_reference <- paste0(SCALE_TYPE)
+
+if (FREQ == "monthly"){
+  FREQ_INT <- 12
+}else if (FREQ == "weekly"){
+  FREQ_INT <- 52
+}
 
 # prices data
-prices_df <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
 
-# dlm output data  
-dlmout <- readRDS(file = file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
+if (MODEL == "dlm"){
 
-# cointegration error
-cointegration_error_df <- dlmout$residuals$res %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
-  mutate(ub=1.4*sqrt(ewma_vol), lb=-1.4*sqrt(ewma_vol))
+  # load model output
+  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", SCALE_TYPE, ".rds")))
 
-# dlm betas
-if (BETAS_TYPE == "smooth"){
-  betas_df <- dlmout$smooth$s
-}else{
-  betas_df <- dlmout$filter$m
+  # cointegration error
+  cointegration_error_df <- model_out$residuals$res %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
+    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol))
+
+
+  # betas
+  if (BETAS_TYPE == "smooth"){
+    betas_df <- dlmout$smooth$s
+  }else{
+    betas_df <- dlmout$filter$m
+  }
+
+}else if (MODEL == "rolling-ols"){
+  
+  # load model output
+  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE,".rds")))
+  
+  # cointegration error
+  cointegration_error_df <- model_out$residuals %>% drop_na() %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
+    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol))
+
+  # betas
+  betas_df <- model_out$model$coefs %>% as.data.table() %>% drop_na() %>%
+   mutate(date=cointegration_error_df$date) %>% select(date, everything()) %>% as.data.table()
+
 }
 
 # positions for the target (y) variable
-positions_df <- data.frame(date=cointegration_error_df$date,
-                           USDSGD=ifelse(cointegration_error_df["residual"] >= cointegration_error_df["ub"],
-                                        -1,
-                                        ifelse(cointegration_error_df["residual"] < cointegration_error_df["lb"],
-                                               1,
-                                               0)))
-colnames(positions_df) <- c("date", TARGET)
+positions_df <- data.table(
+  date = cointegration_error_df$date
+)
+
+# Add the dynamically named column using := inside a data.table expression
+positions_df[, (TARGET) := ifelse(
+  lag(cointegration_error_df$residual, n = 1) >= cointegration_error_df$ub, -1,
+  ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
+)]
+
+# fillna with zero values
+positions_df <- positions_df %>% replace(is.na(.), 0)
 
 # positions for the regressors (X)
 positions_betas_df <- merge(x = positions_df, y = betas_df, by = "date") %>% select(-date, -sym(TARGET))
@@ -84,8 +139,7 @@ for (colname in colnames(out_positions_df)){
 }
 returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% 
   mutate(date=out_positions_df$date) %>% select(date, everything())
-lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-1)]),
-                         lead(returns_df %>% select(-date)) %>% drop_na()) %>% as.data.table()
+lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-1)]), lead(returns_df %>% select(-date)) %>% drop_na()) %>% as.data.table()
 
 # generate stretegy returns
 out_positions_df <- merge(out_positions_df, lead_returns_df %>% select(date), by = "date")
@@ -105,6 +159,6 @@ outputs <- list(signal=cointegration_error_df,
                 bars_ret=returns_df)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(outputs, file.path(OUTPUT_PATH, paste0("backtest_", STRATEGY_TYPE, "_results.rds")))
+saveRDS(outputs, file.path(OUTPUT_PATH, paste0("backtest_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
 
 
