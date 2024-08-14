@@ -10,14 +10,15 @@ library('ggplot2')
 library("readxl")
 library("lubridate")
 library('padr')
+library('here')
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
 source("https://gist.github.com/ellisp/4002241def4e2b360189e58c3f461b4a/raw/0e5dc52262e86b5d21b914db3553e58b0b8d1d20/dualplot.R")
 
-INPUT_PATH <- file.path(getwd(), 'data', 'inputs')
-OUTPUT_PATH <- file.path(getwd(), "data", "outputs")
-UTILS_PATH <- file.path(getwd(), 'data', 'utils')
+INPUT_PATH <- file.path(here(), 'src', 'data', 'inputs')
+OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs')
+UTILS_PATH <- file.path(here(), 'src', 'data', 'utils')
 PPT_OUTPUT_PATH <- file.path(OUTPUT_PATH, "eepge-macro-presentation")
 ```
 
@@ -28,11 +29,23 @@ PPT_OUTPUT_PATH <- file.path(OUTPUT_PATH, "eepge-macro-presentation")
 currencies_df <- read.csv(file.path(INPUT_PATH, "daily-currencies.csv"))
 trade_df <- read.csv(file.path(INPUT_PATH, "relative-trade-data.csv"))
 
-model <- 'dlm'
+model <- 'rolling-ols'
 scale_type <- 'rolling_scale'
-path_rolling_dlm <- file.path(getwd(), 'data', 'outputs', model, paste0("model_results_", scale_type, ".rds"))
-rolling_dlm <- readRDS(path_rolling_dlm)
-betas_df <- rolling_dlm$smooth$s
+output_reference <- paste0(scale_type)
+freq <- "weekly"
+window_size <- 48
+path_rolling_dlm <- file.path(OUTPUT_PATH, 
+                              model,
+                              output_reference,
+                              paste0("model_results_", 
+                              freq, "_", scale_type, "_", window_size, ".rds"))
+model_output <- readRDS(path_rolling_dlm)
+
+if (model == "dlm"){
+  betas_df <- model_output$smooth$s
+}else if (model == "rolling-ols"){
+  betas_df <- model_output$model$coefs
+}
 ```
 
 # Make the proper adjustments on column names, date format etc
@@ -163,7 +176,10 @@ plot_img
 ```{r}
 strategy <- "ewma"
 
-ewma_outputs <- readRDS(file.path(OUTPUT_PATH, model, paste0("backtest_", strategy, "_results.rds")))
+ewma_outputs <- readRDS(file.path(OUTPUT_PATH,
+                                  model,
+                                  output_reference,
+                                  paste0("backtest_", freq, "_", scale_type, "_", window_size, "_", strategy, "_results.rds")))
 ewma_rets_df <- ewma_outputs$returns %>% drop_na()
 ewma_signal_df <- ewma_outputs$signal
 ewma_position_df <- ewma_outputs$positions
@@ -211,6 +227,7 @@ ggsave(plot = plot_img,
      dpi = 100)
 plot_img
 ```
+
 ### Cummulative returns of the portfolio with vol. target of 5%
 
 ```{r}
@@ -236,7 +253,7 @@ plot_img2 <- ggplot(data = data.frame(date=vol_adj_ret_df$date,
               theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
               ggtitle("Realized volatility of the portfolio")
 
-print(paste0("Sharpe ratio of ", as.character(round(mean(vol_adj_ret_df$portfolio, na.rm = TRUE) / sd(vol_adj_ret_df$portfolio, na.rm = TRUE) * sqrt(252), 2))))
+print(paste0("Sharpe ratio of ", as.character(round(mean(vol_adj_ret_df$portfolio, na.rm = TRUE) / sd(vol_adj_ret_df$portfolio, na.rm = TRUE) * sqrt(52), 2))))
 
 # save plot
 ggsave(plot = plot_img,
@@ -272,11 +289,12 @@ ggplot(data = data.frame(date=ewma_ret_df$date,
 ewma_portfolio_rets_df <- rowSums(ewma_rets_df %>% select(-date)) %>% as.data.table() %>%
   mutate(date=ewma_rets_df$date) %>% select(date, everything()) %>% rename(portfolio=".")
 ewma_portfolio_rets_ts <- as.xts(ewma_portfolio_rets_df$portfolio, order.by = ewma_portfolio_rets_df$date)
-ewma_stats <- list(mean=mean(ewma_portfolio_rets_df$portfolio) * 252,
-                   vol=sd(ewma_portfolio_rets_df$portfolio) * sqrt(252),
-                   SR=(mean(ewma_portfolio_rets_df$portfolio) / sd(ewma_portfolio_rets_df$portfolio)) * sqrt(252))
+ewma_stats <- list(mean=mean(ewma_portfolio_rets_df$portfolio) * 52,
+                   vol=sd(ewma_portfolio_rets_df$portfolio) * sqrt(52),
+                   SR=(mean(ewma_portfolio_rets_df$portfolio) / sd(ewma_portfolio_rets_df$portfolio)) * sqrt(52))
 as.data.table(ewma_stats)
 ```
+
 ### Intuition why the strategy works
 
 ```{r}
