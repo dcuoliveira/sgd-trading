@@ -70,7 +70,7 @@ if (MODEL == "dlm"){
 }else if (MODEL == "rolling-ols"){
   
   # load model output
-  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE,".rds")))
+  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE,".rds")))
   
   # cointegration error
   cointegration_error_df <- model_out$residuals %>% drop_na() %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
@@ -164,6 +164,6 @@ outputs <- list(signal=cointegration_error_df,
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
-saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
+saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
 
 

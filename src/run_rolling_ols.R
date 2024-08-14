@@ -40,8 +40,6 @@ num_cores <- args$num_cores
 INTERCEPT <- args$intercept
 TARGET <- args$target
 
-output_reference <- paste0(SCALE_TYPE)
-
 if (FREQ == "monthly"){
   FREQ_INT <- 12
 }else if (FREQ == "weekly"){
@@ -104,8 +102,9 @@ rolling_ols$coefs <- rolling_ols$coefs %>% as.data.table() %>% rename("intercept
 rolling_ols_out <- list(model=rolling_ols,
                         residuals=residuals)
 
-dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
-saveRDS(rolling_ols_out, file.path(OUTPUT_PATH, output_reference, paste0("model_results_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE, ".rds")))
+dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
+dir.create(file.path(OUTPUT_PATH, SCALE_TYPE), showWarnings = FALSE)
+saveRDS(rolling_ols_out, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, ".rds")))
 
 
 
