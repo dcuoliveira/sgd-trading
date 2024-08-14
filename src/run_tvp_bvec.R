@@ -21,7 +21,6 @@ option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "tvp-bvec"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "monthly"),
-  make_option(c("--mean_window_size"), type = "integer", help = "Mean window size", default = 12),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = detectCores() - 1),
@@ -41,7 +40,6 @@ MODEL <- args$model_name
 OUTPUT_PATH <- file.path(args$output_path, MODEL)
 FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
-MEAN_WINDOW_SIZE <- args$mean_window_size
 SCALE_TYPE <- args$scale_type
 num_cores <- args$num_cores
 ITERATIONS <- args$iterations
