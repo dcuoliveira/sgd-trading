@@ -88,8 +88,12 @@ positions_df <- data.table(
 )
 
 # Add the dynamically named column using := inside a data.table expression
+# positions_df[, (TARGET) := ifelse(
+#   lag(cointegration_error_df$residual, n = 1) >= cointegration_error_df$ub, -1,
+#   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
+# )]
 positions_df[, (TARGET) := ifelse(
-  lag(cointegration_error_df$residual, n = 1) >= cointegration_error_df$ub, -1,
+  cointegration_error_df$residual >= cointegration_error_df$ub, -1,
   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
 )]
 
@@ -159,6 +163,7 @@ outputs <- list(signal=cointegration_error_df,
                 bars_ret=returns_df)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(outputs, file.path(OUTPUT_PATH, paste0("backtest_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
+dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
+saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_", FREQ, "_", SCALE_TYPE, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
 
 
