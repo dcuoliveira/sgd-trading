@@ -14,7 +14,7 @@ OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs')
 MODEL <- "rolling-ols"
 SCALE_TYPE <- "rolling_scale"
 FREQ <- "weekly"
-WINDOW_SIZE <- 48 * 2
+WINDOW_SIZE <- 104
 STRATEGY_TYPE <- "ewma"
 VOL_TARGET <- 15
 intercept_tag <- "nointercept"
@@ -116,16 +116,16 @@ ggplot(data = agg_portfolio_cumm_rets,
 
 # portfolio metrics for the aggregated portfolio
 ret_vec = agg_portfolio_returns %>% select(-date) %>% as.matrix()
-list(mean=mean(ret_vec) * 48,
-     vol=sd(ret_vec) * sqrt(48),
-     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(48))
+list(mean=mean(ret_vec) * 52,
+     vol=sd(ret_vec) * sqrt(52),
+     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(52))
 ```
 
 # 3) Plot Saceld Cummulative returns
 
 ```{r}
 scaled_agg_portfolio_returns <- agg_portfolio_returns %>%
-mutate(vol=roll_sd(x = rets, width = 12) * sqrt(48) * 100) %>%
+mutate(vol=roll_sd(x = rets, width = 12) * sqrt(52) * 100) %>%
 
 agg_portfolio_cumm_rets <- cumprod(1+(agg_portfolio_returns %>% select(-date))) %>% mutate(date=agg_portfolio_returns$date) %>% select(date, everything())
 
@@ -139,7 +139,7 @@ ggplot(data = agg_portfolio_cumm_rets,
 
 # portfolio metrics for the aggregated portfolio
 ret_vec = agg_portfolio_returns %>% select(-date) %>% as.matrix()
-list(mean=mean(ret_vec) * 48,
-     vol=sd(ret_vec) * sqrt(48),
-     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(48))
+list(mean=mean(ret_vec) * 52,
+     vol=sd(ret_vec) * sqrt(52),
+     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(52))
 ```
