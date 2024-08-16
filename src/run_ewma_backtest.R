@@ -17,7 +17,7 @@ option_list <- list(
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 96),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 48),
   make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
