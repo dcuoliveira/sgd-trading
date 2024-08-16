@@ -77,7 +77,7 @@ if (SCALE_TYPE == "scale"){
   data <- data %>% drop_na()
 }
 
-rolling_ols <- roll_regres(model_formula, data, min_obs = WINDOW_SIZE, do_downdates = FALSE, width = WINDOW_SIZE) # width only used when do_downdates=T
+rolling_ols <- roll_regres(model_formula, data, min_obs = WINDOW_SIZE, do_downdates = TRUE, width = WINDOW_SIZE) # width only used when do_downdates=T
 
 # residuals
 betas = rolling_ols$coefs
