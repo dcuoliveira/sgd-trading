@@ -21,7 +21,7 @@ option_list <- list(
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = 1),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 48),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 96),
   make_option(c("--target"), type = "character", help = "Target of the model", default = "SGD")
 )
 
@@ -44,6 +44,12 @@ if (FREQ == "monthly"){
   FREQ_INT <- 12
 }else if (FREQ == "weekly"){
   FREQ_INT <- 52
+}
+
+if (INTERCEPT == T){
+  intercept_tag <- "intercept"
+}else{
+  intercept_tag <- "nointercept"
 }
 
 # load data
@@ -76,8 +82,10 @@ rolling_ols <- roll_regres(model_formula, data, min_obs = WINDOW_SIZE, do_downda
 # residuals
 betas = rolling_ols$coefs
 X <- data
-X <- cbind(1, X)
-colnames(X)[1] <- "(Intercept)"
+if (INTERCEPT == T){
+  X <- cbind(1, X)
+  colnames(X)[1] <- "(Intercept)"
+}
 X <- X[, colnames(X) %in% colnames(betas)]
 y <- data[TARGET]
 
@@ -96,7 +104,11 @@ residuals$date <- ymd(residuals$date)
 
 # fix name
 date <- rownames(rolling_ols$coefs)
-rolling_ols$coefs <- rolling_ols$coefs %>% as.data.table() %>% rename("intercept" = `(Intercept)`) %>% mutate(date=ymd(date)) %>% select(date, everything())
+rolling_ols$coefs <- rolling_ols$coefs %>% as.data.table()
+if (INTERCEPT == T){
+  rolling_ols$coefs <- rolling_ols$coefs %>% rename("intercept" = `(Intercept)`)
+}
+rolling_ols$coefs <- rolling_ols$coefs %>% mutate(date=ymd(date)) %>% select(date, everything())
 
 # outputs
 rolling_ols_out <- list(model=rolling_ols,
@@ -104,7 +116,7 @@ rolling_ols_out <- list(model=rolling_ols,
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 dir.create(file.path(OUTPUT_PATH, SCALE_TYPE), showWarnings = FALSE)
-saveRDS(rolling_ols_out, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, ".rds")))
+saveRDS(rolling_ols_out, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
 
 
 

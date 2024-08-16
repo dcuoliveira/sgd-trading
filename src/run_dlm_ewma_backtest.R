@@ -15,8 +15,9 @@ option_list <- list(
   make_option(c("--model_name"), type = "character", help = "Model name for output", default = "rolling-ols"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
+  make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 48),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 96),
   make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
@@ -38,6 +39,7 @@ BETAS_TYPE <- args$betas_type
 FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
 THRESHOLD <- as.numeric(args$threshold)
+INTERCEPT <- args$intercept
 
 output_reference <- paste0(SCALE_TYPE)
 
@@ -45,6 +47,12 @@ if (FREQ == "monthly"){
   FREQ_INT <- 12
 }else if (FREQ == "weekly"){
   FREQ_INT <- 52
+}
+
+if (INTERCEPT == T){
+  intercept_tag <- "intercept"
+}else{
+  intercept_tag <- "nointercept"
 }
 
 # prices data
@@ -70,7 +78,7 @@ if (MODEL == "dlm"){
 }else if (MODEL == "rolling-ols"){
   
   # load model output
-  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE,".rds")))
+  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
   
   # cointegration error
   cointegration_error_df <- model_out$residuals %>% drop_na() %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
@@ -120,7 +128,10 @@ for (i in 1:nrow(positions_betas_df)){
 out_positions_betas_df <- do.call("rbind", out_positions_betas_list) %>% as.data.table()
 
 # put all positions together
-out_positions_df <- cbind(positions_df, out_positions_betas_df) %>% as.data.table()  %>% select(-intercept)
+out_positions_df <- cbind(positions_df, out_positions_betas_df) %>% as.data.table()
+if (INTERCEPT == T){
+   out_positions_df <- out_positions_df %>% select(-intercept)
+}
 
 # returns data
 prices_dtref <- prices_df$date
@@ -141,8 +152,7 @@ for (colname in colnames(out_positions_df)){
     returns_list[[colname]] <- returns_df[[colname]]
   }
 }
-returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% 
-  mutate(date=out_positions_df$date) %>% select(date, everything())
+returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% mutate(date=out_positions_df$date) %>% select(date, everything())
 lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-1)]), lead(returns_df %>% select(-date)) %>% drop_na()) %>% as.data.table()
 
 # generate stretegy returns
@@ -164,6 +174,6 @@ outputs <- list(signal=cointegration_error_df,
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
-saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_results.rds")))
+saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_results_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_", intercept_tag, ".rds")))
 
 
