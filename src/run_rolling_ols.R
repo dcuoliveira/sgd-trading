@@ -19,7 +19,7 @@ option_list <- list(
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = TRUE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "no_scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = 1),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 104),
   make_option(c("--target"), type = "character", help = "Target of the model", default = "SGD")
