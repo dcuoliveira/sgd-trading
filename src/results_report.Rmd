@@ -12,12 +12,12 @@ library("aTSA")
 
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs')
 MODEL <- "rolling-ols"
-SCALE_TYPE <- "rolling_scale"
+SCALE_TYPE <- "no_scale"
 FREQ <- "weekly"
 WINDOW_SIZE <- 104
-STRATEGY_TYPE <- "ewma"
+STRATEGY_TYPE <- "scale"
 VOL_TARGET <- 15
-intercept_tag <- "nointercept"
+intercept_tag <- "intercept"
 ```
 
 # 0) Load Backtest Results
@@ -116,9 +116,9 @@ ggplot(data = agg_portfolio_cumm_rets,
 
 # portfolio metrics for the aggregated portfolio
 ret_vec = agg_portfolio_returns %>% select(-date) %>% as.matrix()
-list(mean=mean(ret_vec) * 52,
-     vol=sd(ret_vec) * sqrt(52),
-     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(52))
+list(mean=mean(ret_vec, na.rm = TRUE) * 52,
+     vol=sd(ret_vec, na.rm = TRUE) * sqrt(52),
+     SR=(mean(ret_vec, na.rm = TRUE) / sd(ret_vec, na.rm = TRUE)) * sqrt(52))
 ```
 
 # 3) Plot Saceld Cummulative returns
@@ -139,7 +139,7 @@ ggplot(data = agg_portfolio_cumm_rets,
 
 # portfolio metrics for the aggregated portfolio
 ret_vec = agg_portfolio_returns %>% select(-date) %>% as.matrix()
-list(mean=mean(ret_vec) * 52,
-     vol=sd(ret_vec) * sqrt(52),
-     SR=(mean(ret_vec) / sd(ret_vec)) * sqrt(52))
+list(mean=mean(ret_vec, na.rm = TRUE) * 52,
+     vol=sd(ret_vec, na.rm = TRUE) * sqrt(52),
+     SR=(mean(ret_vec, na.rm = TRUE) / sd(ret_vec, na.rm = TRUE)) * sqrt(52))
 ```
