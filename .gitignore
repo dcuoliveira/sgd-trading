@@ -7,6 +7,7 @@
 # Vscoe
 .DS_Store
 
+src/data/outputs/tvp-bvec/*
 src/data/outputs/tvp-bvec/rolling_scale_1-2_100_100/model_results_rolling_scale_1-2_100_100.rds
 src/data/outputs/tvp-bvec/rolling_scale_1-2-3_100_100/model_results_rolling_scale_1-2-3_100_100.rds
 src/data/outputs/tvp-bvec/rolling_scale_1-2-3_100_100/model_results_rolling_scale_1-2-3_10000_5000.rds

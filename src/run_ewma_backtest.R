@@ -12,16 +12,16 @@ source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
 # define command-line options
 option_list <- list(
-  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "rolling-ols"),
+  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "dlm"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 104),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 4),
   make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
-  make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.4)
+  make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.5)
 )
 
 # create a parser object
@@ -40,8 +40,7 @@ FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
 THRESHOLD <- as.numeric(args$threshold)
 INTERCEPT <- args$intercept
-
-output_reference <- paste0(SCALE_TYPE)
+BETAS_TYPE <- "filter"
 
 if (FREQ == "monthly"){
   FREQ_INT <- 12
@@ -56,23 +55,37 @@ if (INTERCEPT == T){
 }
 
 # prices data
-prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date))
 
 if (MODEL == "dlm"){
 
   # load model output
-  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", SCALE_TYPE, ".rds")))
-
+  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
+  
   # cointegration error
-  cointegration_error_df <- model_out$residuals$res %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
-    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol))
+  cointegration_error_df <- model_out$residuals$res %>%
+    drop_na() %>%
+    mutate(ewma_vol=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
+    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol)) %>%
+    as.data.table()
+  
+  residuals_df = model_out$residuals$res %>% as.data.table()
+  n = dim(residuals_df)[1]
+  # mean <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = mean, align = "right", partial = TRUE)
+  std <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = sd, align = "right", partial = TRUE)
+  # residuals <- ((residuals_df$residual - mean) / sd)
+  # residuals <- residuals %>% as.matrix()
+  # cointegration_error_df = data.table(date=residuals_df$date, residual=residuals_df$residual) %>%
+  #   rename(residual=`residual.V1`) %>%
+  #   mutate(ub=THRESHOLD, lb=-THRESHOLD)
+  cointegration_error_df = residuals_df %>% mutate(std=std) %>% mutate(ub=THRESHOLD*std, lb=-THRESHOLD*std)
 
 
   # betas
   if (BETAS_TYPE == "smooth"){
-    betas_df <- dlmout$smooth$s
+    betas_df <- model_out$smooth$s
   }else{
-    betas_df <- dlmout$filter$m
+    betas_df <- model_out$filter$m
   }
 
 }else if (MODEL == "rolling-ols"){
@@ -117,9 +130,9 @@ for (i in 1:nrow(positions_betas_df)){
   coint_error_row <- positions_df[i,]
   
   if (coint_error_row[[TARGET]] > 0){
-    out_positions_betas_list[[i]] <- betas_row * -1 
-  }else if (coint_error_row[[TARGET]] < 0){
     out_positions_betas_list[[i]] <- betas_row * 1 
+  }else if (coint_error_row[[TARGET]] < 0){
+    out_positions_betas_list[[i]] <- betas_row * -1 
   }else{
     out_positions_betas_list[[i]] <- betas_row * 0 
   }
@@ -152,19 +165,25 @@ for (colname in colnames(out_positions_df)){
     returns_list[[colname]] <- returns_df[[colname]]
   }
 }
-returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% mutate(date=out_positions_df$date) %>% select(date, everything())
-lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-1)]), lead(returns_df %>% select(-date)) %>% drop_na()) %>% as.data.table()
+returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% 
+  mutate(date=out_positions_df$date[1:length(out_positions_df$date)]) %>%
+  select(date, everything())
+l <- 1
+lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-l)]), lead(returns_df %>% select(-date), l) %>% drop_na()) %>% as.data.table()
 
 # generate stretegy returns
 out_positions_df <- merge(out_positions_df, lead_returns_df %>% select(date), by = "date")
 strategy_returns_df <- (out_positions_df %>% select(-date)) * (lead_returns_df %>% select(-date))
+
+ts.plot(cumprod(1+rowSums(strategy_returns_df)))
+
 strategy_returns_df <- strategy_returns_df %>% mutate(date=out_positions_df$date) %>%
   select(date, everything()) %>% drop_na()
 
 all_cumret_df <- cumprod(1+(strategy_returns_df %>% select(-date))) %>%
   mutate(date=strategy_returns_df$date) %>% select(date, everything())
 ret_df <- data.frame(date=strategy_returns_df$date,
-                        portfolio=rowSums(strategy_returns_df %>% select(-date)))
+                     portfolio=rowSums(strategy_returns_df %>% select(-date))) %>% as.data.table()
 
 outputs <- list(signal=cointegration_error_df,
                 positions=out_positions_df,
@@ -173,7 +192,7 @@ outputs <- list(signal=cointegration_error_df,
                 bars_ret=returns_df)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-dir.create(file.path(OUTPUT_PATH, output_reference), showWarnings = FALSE)
-saveRDS(outputs, file.path(OUTPUT_PATH, output_reference, paste0("backtest_results_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_", intercept_tag, ".rds")))
+dir.create(file.path(OUTPUT_PATH, SCALE_TYPE), showWarnings = FALSE)
+saveRDS(outputs, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("backtest_results_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_", intercept_tag, ".rds")))
 
 

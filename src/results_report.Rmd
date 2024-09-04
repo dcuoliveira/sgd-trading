@@ -4,6 +4,7 @@ output: html_notebook
 ---
 
 ```{r}
+# [1] "/Users/danieloliveira/Documents/Daniel/codes/sgd-trading/src/data/outputs/dlm/model_results_rolling_scale.rds"
 rm(list=ls())
 library('here')
 library('dplyr')
@@ -11,19 +12,19 @@ library('ggplot2')
 library("aTSA")
 
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs')
-MODEL <- "rolling-ols"
-SCALE_TYPE <- "no_scale"
-FREQ <- "weekly"
-WINDOW_SIZE <- 104
+MODEL <- "dlm"
+SCALE_TYPE <- "rolling_scale"
 STRATEGY_TYPE <- "scale"
-VOL_TARGET <- 15
-intercept_tag <- "intercept"
+FREQ <- "weekly"
+WINDOW_SIZE <- 52 * 4
+VOL_TARGET <- 10
+intercept_tag <- "nointercept"
 ```
 
 # 0) Load Backtest Results
 
 ```{r}
-start_date <- "2008-01-01"
+# start_date <- "2008-01-01"
 backtest_output <- readRDS(file.path(OUTPUT_PATH, MODEL, SCALE_TYPE, paste0("backtest_results_", FREQ, "_", WINDOW_SIZE, "_", STRATEGY_TYPE, "_", intercept_tag, ".rds")))
 model_output <- readRDS(file.path(OUTPUT_PATH, MODEL, SCALE_TYPE,  paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
 
@@ -33,22 +34,26 @@ signals <- backtest_output$signal
 positions <- backtest_output$positions
 asset_returns <- backtest_output$bars_ret
 asset_prices <- backtest_output$bars
-coefs <- model_output$model$coefs
+if (MODEL == "rolling-ols"){
+  coefs <- model_output$model$coefs
+}else{
+  coefs <- model_output$filter$m
+}
 ```
 
 # 1) Plot Signals
 
 ```{r}
-ggplot(data = signals %>% select(date, residual) %>% filter(date >= start_date) %>% melt("date"), 
+ggplot(data = signals %>% select(date, residual) %>% filter(date >= "2000-01-01") %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 
               theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-              ggtitle("Residuals")
+              ggtitle("Residual")
 
 adf.test(x=signals$residual, nlag = 1)
 
-ggplot(data = signals %>% filter(date >= start_date) %>% melt("date"), 
+ggplot(data = signals %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 
@@ -59,7 +64,7 @@ ggplot(data = signals %>% filter(date >= start_date) %>% melt("date"),
 # 2) Plot Beta
 
 ```{r}
-ggplot(data = coefs %>% filter(date >= start_date) %>% melt("date"), 
+ggplot(data = coefs %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 
@@ -84,7 +89,7 @@ do.call("cbind", ar_params)
 # 3) Plot Positions
 
 ```{r}
-ggplot(data = positions %>% filter(date >= start_date) %>% melt("date"), 
+ggplot(data = positions %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 
@@ -99,7 +104,7 @@ portfolio_cumm_rets <- cumprod(1+(portfolio_returns %>% select(-date))) %>% muta
 agg_portfolio_cumm_rets <- cumprod(1+(agg_portfolio_returns %>% select(-date))) %>% mutate(date=agg_portfolio_returns$date) %>% select(date, everything())
 
 # each asset
-ggplot(data = portfolio_cumm_rets %>% filter(date >= start_date) %>% melt("date"), 
+ggplot(data = portfolio_cumm_rets %>% melt("date"), 
                    mapping = aes(x = date, y = value, colour = variable, group = variable)) +
               geom_line() +
               scale_x_date(date_breaks = "1 year") + 

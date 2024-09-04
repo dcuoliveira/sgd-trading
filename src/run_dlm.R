@@ -14,12 +14,12 @@ source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 MODEL <- "dlm"
 OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
 WINDOW_SIZE <- 52 * 2
-MEAN_WINDOW_SIZE <- 52 * 1
-INTERCEPT <- TRUE
+INTERCEPT <- FALSE
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
+FREQ <- "weekly"
 
-data <- load_and_resample_currencies() %>% mutate(date=ymd(date)) %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
@@ -60,7 +60,7 @@ residual_variance <- ((summary(lm_model)$sigma)) ** 2
 # theta_t: time-varying alphas and betas 
 #########################################################
 m <- NCOL(X)
-dlm_model <- dlmModReg(X)
+dlm_model <- dlmModReg(X, addInt = INTERCEPT)
 dlm_model$FF <- dlm_model$FF
 dlm_model$GG <- dlm_model$GG * 1
 dlm_model$W <- diag(betas_variaces)
@@ -80,14 +80,22 @@ dlm_filter_residual$res <- dlm_filter_residual$res %>% select(date, everything()
 # rename columns
 ## smooth parameters
 dlm_smooth$s <- dlm_smooth$s %>% as.data.table()
-colnames(dlm_smooth$s) <- append("intercept", colnames(X))
+if (INTERCEPT == T){
+  colnames(dlm_smooth$s) <- append("intercept", colnames(X))
+}else{
+  colnames(dlm_smooth$s) <- colnames(X)
+}
 dlm_smooth$s <- dlm_smooth$s[2:dim(dlm_smooth$s)[1], ]
 dlm_smooth$s$date <- ymd(rownames(X))
 dlm_smooth$s <- dlm_smooth$s %>% select(date, everything())
 
 ## filter parameters
 dlm_filter$m <- dlm_filter$m %>% as.data.table()
-colnames(dlm_filter$m) <- append("intercept", colnames(X))
+if (INTERCEPT == T){
+  colnames(dlm_filter$m) <- append("intercept", colnames(X))
+}else{
+  colnames(dlm_filter$m) <- colnames(X)
+}
 dlm_filter$m <- dlm_filter$m[2:dim(dlm_filter$m)[1], ]
 dlm_filter$m$date <- ymd(rownames(X))
 dlm_filter$m <- dlm_filter$m %>% select(date, everything())
@@ -97,8 +105,14 @@ dlmout <- list(filter=dlm_filter,
                smooth=dlm_smooth,
                residuals=dlm_filter_residual)
 
+if (INTERCEPT == T){
+  intercept_tag <- "intercept"
+}else{
+  intercept_tag <- "nointercept"
+}
+
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
-saveRDS(dlmout, file.path(OUTPUT_PATH, paste0("model_results_", SCALE_TYPE, ".rds")))
+saveRDS(dlmout, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
 
 
 
