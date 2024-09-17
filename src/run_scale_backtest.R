@@ -60,7 +60,8 @@ if (INTERCEPT == T){
 }
 
 # prices data
-prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+prices_df <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>%
+  mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
 
 if (MODEL == "dlm"){
 

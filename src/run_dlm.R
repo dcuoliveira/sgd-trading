@@ -19,7 +19,7 @@ TARGET <- "SGD"
 SCALE_TYPE <- "noscale"
 FREQ <- "weekly"
 
-data <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
