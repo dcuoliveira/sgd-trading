@@ -1,53 +1,84 @@
 rm(list=ls())
-library('here')
 library('dplyr')
 library("tidyr")
 library("data.table")
-library("MTS")
-library("lubridate")
-library("optparse")
+library("roll")
+library("rlang")
+library("reshape2")
+library("dlm")
+library("gridExtra")
 
 source(file.path(getwd(), 'src', 'models', 'utils.R'))
 source(file.path(getwd(), 'src', 'models', 'models.R'))
 source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
+source(file.path(getwd(), 'src', 'func.R'))
 
-# define command-line options
-option_list <- list(
-  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "dlm"),
-  make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
-  make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
-  make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 4),
-  make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
-  make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
-  make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 2)
-)
+MODEL <- "dlm"
+OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
+WINDOW_SIZE <- 52 * 10
+INTERCEPT <- FALSE
+TARGET <- "SGD"
+SCALE_TYPE <- "rolling_scale"
+FREQ <- "weekly"
 
-# create a parser object
-parser <- OptionParser(option_list = option_list)
+data <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+data_orig <- data
+data <- data %>% select(-date)
 
-# parse the arguments
-args <- parse_args(parser)
-
-MODEL <- args$model_name
-STRATEGY_TYPE <- args$strategy_type
-OUTPUT_PATH <- file.path(args$output_path, MODEL)
-TARGET <- args$target
-SCALE_TYPE <- args$scale_type
-BETAS_TYPE <- "filter"
-FREQ = args$frequency
-WINDOW_SIZE <- args$window_size
-THRESHOLD <- as.numeric(args$threshold)
-INTERCEPT <- args$intercept
-STRATEGY_TYPE <- args$strategy_type
-
-if (FREQ == "monthly"){
-  FREQ_INT <- 12
-}else if (FREQ == "weekly"){
-  FREQ_INT <- 52
+if (INTERCEPT == T){
+  model_formula <- paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + "), "+1")
+}else{
+  model_formula <- paste(paste("SGD", "~", paste(names(data)[-grep("SGD|SNEER|date", names(data))], collapse=" + ")), " -1")
 }
+
+y <- data[,TARGET]
+X <- data %>% select(-!!(TARGET))
+
+lm_model <- lm(formula = model_formula,
+               data = data)
+betas_variaces <- (summary(lm_model)$coefficients[,2]) ** 2
+residual_variance <- ((summary(lm_model)$sigma)) ** 2
+
+m <- NCOL(X)
+dlm_model <- dlmModReg(X, addInt = INTERCEPT)
+dlm_model$FF <- dlm_model$FF
+dlm_model$GG <- dlm_model$GG * 1
+dlm_model$W <- diag(betas_variaces)
+dlm_model$V <- residual_variance 
+dlm_model$m0 <- rep(0,2 * m)
+dlm_model$C0 <- diag(1e7, nr = 2 * m)
+
+dlm_filter <- dlmFilter(y, dlm_model)
+dlm_smooth <- dlmSmooth(dlm_filter)
+dlm_filter_residual <- residuals(dlm_filter)
+dlm_filter_residual$res <- as.data.frame(dlm_filter_residual$res)
+colnames(dlm_filter_residual$res) <- "residual"
+dlm_filter_residual$res$date <- ymd(rownames(X))
+dlm_filter_residual$res <- dlm_filter_residual$res %>% select(date, everything())
+
+dlm_smooth$s <- dlm_smooth$s %>% as.data.table()
+if (INTERCEPT == T){
+  colnames(dlm_smooth$s) <- append("intercept", colnames(X))
+}else{
+  colnames(dlm_smooth$s) <- colnames(X)
+}
+dlm_smooth$s <- dlm_smooth$s[2:dim(dlm_smooth$s)[1], ]
+dlm_smooth$s$date <- ymd(rownames(X))
+dlm_smooth$s <- dlm_smooth$s %>% select(date, everything())
+
+dlm_filter$m <- dlm_filter$m %>% as.data.table()
+if (INTERCEPT == T){
+  colnames(dlm_filter$m) <- append("intercept", colnames(X))
+}else{
+  colnames(dlm_filter$m) <- colnames(X)
+}
+dlm_filter$m <- dlm_filter$m[2:dim(dlm_filter$m)[1], ]
+dlm_filter$m$date <- ymd(rownames(X))
+dlm_filter$m <- dlm_filter$m %>% select(date, everything())
+
+dlmout <- list(filter=dlm_filter,
+               smooth=dlm_smooth,
+               residuals=dlm_filter_residual)
 
 if (INTERCEPT == T){
   intercept_tag <- "intercept"
@@ -55,90 +86,71 @@ if (INTERCEPT == T){
   intercept_tag <- "nointercept"
 }
 
-# prices data
-prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
+saveRDS(dlmout, file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
 
-if (MODEL == "dlm"){
-  
-  # load model output
-  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
-  
-  residuals_df = model_out$residuals$res %>% as.data.table()
-  n = dim(residuals_df)[1]
-  # mean <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = mean, align = "right", partial = TRUE)
-  std <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = sd, align = "right", partial = TRUE)
-  # residuals <- ((residuals_df$residual - mean) / sd)
-  # residuals <- residuals %>% as.matrix()
-  # cointegration_error_df = data.table(date=residuals_df$date, residual=residuals_df$residual) %>%
-  #   rename(residual=`residual.V1`) %>%
-  #   mutate(ub=THRESHOLD, lb=-THRESHOLD)
-  cointegration_error_df = residuals_df %>% mutate(std=std) %>% mutate(ub=THRESHOLD*std, lb=-THRESHOLD*std)
-  
-  # betas
-  if (BETAS_TYPE == "smooth"){
-    betas_df <- model_out$smooth$s
-  }else{
-    betas_df <- model_out$filter$m
-  }
-  
-}else if (MODEL == "rolling-ols"){
-  
-  # load model output
-  model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
-  
-  # cointegration error
-  residuals = model_out$residuals$residual %>% as.data.table()
-  n = dim(residuals)[1]
-  mean <- apply(residuals, 2, function(x) {roll_mean(x, width = WINDOW_SIZE, min_obs = WINDOW_SIZE)})
-  sd <- apply(residuals, 2, function(x) {roll_sd(x, width = WINDOW_SIZE, min_obs = WINDOW_SIZE)})
-  residuals <- ((residuals - mean) / sd)
-  residuals <- residuals %>% as.matrix()
-  cointegration_error_df = data.table(date=model_out$residuals$date, residual=residuals) %>%
-    rename(residual=`residual..`) %>%
-    mutate(ub=THRESHOLD, lb=-THRESHOLD)
-  
-  # betas
-  betas_df <- model_out$model$coefs %>% as.data.table() %>%
-    mutate(date=cointegration_error_df$date) %>% select(date, everything()) %>% as.data.table()
-  
-}
+# dlm residuals datatable
+res <- dlmout$residuals$res %>% as.data.table() %>% mutate(date=ymd(date))
 
-trade_strategy <- function(ect, initial_cash, trade_size, K) {
-  position <- 0
-  cash <- initial_cash
-  portfolio_value <- numeric(length(ect))
-  positions <- numeric(length(ect))
-  portfolio_value[1] <- initial_cash
-  
-  for (i in 2:length(ect)) {
-    if (ect[i-1] <= -K && position == 0) {
-      position <- trade_size
-      cash <- cash - (position * ect[i-1])
-    } else if (ect[i-1] >= K && position == 0) {
-      position <- -trade_size
-      cash <- cash - (position * ect[i-1] )
-    } else if (ect[i-1] * sign(position) > 0 && abs(ect[i-1] ) < abs(K)) {
-      cash <- cash + (position * ect[i-1])
-      position <- 0
-    }
-    portfolio_value[i] <- cash + (position * ect[i-1])
-    positions[i] <- position
-  }
-  
-  list(portfolio_value = portfolio_value, cash = cash, position = position)
-}
+# # plot residuals
+# ggplot(res, aes(x=date, y=residual)) +
+#   geom_line(color="blue") +
+#   labs(title="Residuals Over Time",
+#        x="Date",
+#        y="Residuals") +
+#   theme_minimal(base_size=15)
 
-strategy <- trade_strategy(ect = cointegration_error_df$residual,
-                           initial_cash = 100,
-                           trade_size = 10,
-                           K = 1)
+n <- length(dlmout[["residuals"]][["res"]][,1])
+dt <- dlmout[["residuals"]][["res"]][,1][378:n] # [400:1364]
+ect <- dlmout[["residuals"]][["res"]][,2][378:n] # [400:1364]
+k <- 2
 
-strategy_returns <- (strategy$portfolio_value - lag(strategy$portfolio_value)) / lag(strategy$portfolio_value)
-annualized_return <- mean(strategy_returns, na.rm = TRUE) * 52
-annualized_volatility <- sd(strategy_returns, na.rm = TRUE) * sqrt(52)
-sharpe_ratio <- annualized_return / annualized_volatility
-print(sharpe_ratio)
+# # plot residuals
+# ggplot(res %>% filter(date <= "1999-07-02"), aes(x=date, y=residual)) +
+#   geom_line(color="blue") +
+#   labs(title="Residuals Over Time",
+#        x="Date",
+#        y="Residuals") +
+#   theme_minimal(base_size=15)
+# 
+# # ggplot currencies
+# ggplot(data_orig %>% filter(date <= "1999-07-02"), aes(x=date, y=KRW)) +
+#   geom_line(color="blue") +
+#   labs(title="SGD Over Time",
+#        x="Date",
+#        y="KRW") +
+#   theme_minimal(base_size=15)
 
+portfolio_value <- trade_strategy(ect=ect, k=k)
+thresh <- sd(ect) * k
 
+data_plot <- data.frame(Date = dt, ECT = ect, PortfolioValue = portfolio_value)
 
+p1 <- ggplot(data_plot, aes(x = Date)) +
+  geom_line(aes(y = ECT), color = "blue", size = 1) + 
+  geom_hline(yintercept = thresh, color = "red", linetype = "dashed", size = 1) + 
+  geom_hline(yintercept = -thresh, color = "red", linetype = "dashed", size = 1) +  
+  labs(title = "ECT Over Time with Thresholds",
+       x = "Date",
+       y = "ECT") +
+  theme_minimal(base_size = 15)
 
+p2 <- ggplot(data_plot, aes(x = Date, y = PortfolioValue)) +
+  geom_line(color = "black", size = 1) +  
+  labs(title = "Portfolio Value Over Time",
+       x = "Date",
+       y = "Portfolio Value") +
+  theme_minimal(base_size = 15)
+
+grid.arrange(p1, p2, ncol = 1)
+
+portfolio_returns <- diff(portfolio_value) / lag(portfolio_value, 1)
+portfolio_returns <- na.omit(portfolio_returns)
+trading_weeks_per_year <- 52
+annualized_return <- prod(1 + portfolio_returns)^(trading_weeks_per_year / length(portfolio_returns)) - 1
+annualized_volatility <- sd(portfolio_returns) * sqrt(trading_weeks_per_year)
+risk_free_rate <- 0
+sharpe_ratio <- (annualized_return - risk_free_rate) / annualized_volatility
+cat("Annualized Return:", annualized_return, "\n")
+cat("Annualized Volatility:", annualized_volatility, "\n")
+cat("Sharpe Ratio:", sharpe_ratio, "\n")

@@ -132,13 +132,18 @@ resample_to_monthly <- function(data) {
     select(date, everything(), -year, -month))
 }
 
-load_and_resample_currencies = function(freq){
+load_and_resample_currencies = function(freq, invert_quotes=TRUE){
   
-  orig_df = read.csv(here('src', 'data', 'inputs', 'daily-currencies.csv')) %>% mutate(date=ymd(date)) %>% pad()
+  orig_df = read.csv(here('src', 'data', 'inputs', 'daily-currencies-new.csv'), sep = ";") %>%
+    mutate(date=ymd(date)) %>%
+    pad() %>%
+    na.locf(., fromLast = TRUE)
     
   if (freq == 'weekly'){
-    out_df = orig_df %>% mutate(weekday=weekdays(date, abbreviate = TRUE)) %>% filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
-      select(-weekday, -USD.Curncy)
+    out_df = orig_df %>%
+      mutate(weekday=weekdays(date, abbreviate = TRUE)) %>%
+      filter(weekday=='sex'|weekday=='Sex'|weekday=='Fri'|weekday=='fri') %>%
+      select(-weekday)
   }else if (freq == 'monthly'){
     out_df <- orig_df %>%
       mutate(date = as.Date(date))
@@ -163,6 +168,15 @@ load_and_resample_currencies = function(freq){
   
   out_df = na.locf(na.locf(out_df), fromLast = TRUE)
   colnames(out_df) = unlist(lapply(colnames(out_df), function(x){strsplit(x, '.', fixed = TRUE)[[1]][1]}))
+  
+  if (invert_quotes){
+    dtref <- out_df$date
+    out_df <- out_df %>% select(-date)
+    out_df <- 1 / out_df
+    out_df$date <- dtref
+    out_df <- out_df %>% select(date, everything())
+  }
+  
   rownames(out_df) = out_df$date
 
   return(out_df)

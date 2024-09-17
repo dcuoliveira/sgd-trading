@@ -5,9 +5,11 @@ library("tidyr")
 library("data.table")
 library("MTS")
 library("lubridate")
+library("optparse")
 
 source(file.path(getwd(), 'src', 'models', 'utils.R'))
 source(file.path(getwd(), 'src', 'models', 'models.R'))
+source(file.path(getwd(), 'src', 'models', 'backtest.R'))
 source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
 # define command-line options
@@ -17,8 +19,8 @@ option_list <- list(
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
   make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 4),
   make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
   make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.5)
@@ -35,12 +37,12 @@ STRATEGY_TYPE <- args$strategy_type
 OUTPUT_PATH <- file.path(args$output_path, MODEL)
 TARGET <- args$target
 SCALE_TYPE <- args$scale_type
-BETAS_TYPE <- args$betas_type
+BETAS_TYPE <- "filter"
 FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
 THRESHOLD <- as.numeric(args$threshold)
 INTERCEPT <- args$intercept
-BETAS_TYPE <- "filter"
+STRATEGY_TYPE <- args$strategy_type
 
 if (FREQ == "monthly"){
   FREQ_INT <- 12
@@ -55,138 +57,73 @@ if (INTERCEPT == T){
 }
 
 # prices data
-prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date))
+prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
 
 if (MODEL == "dlm"){
-
+  
   # load model output
   model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
   
-  # cointegration error
-  cointegration_error_df <- model_out$residuals$res %>%
-    drop_na() %>%
-    mutate(ewma_vol=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
-    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol)) %>%
-    as.data.table()
-  
-  residuals_df = model_out$residuals$res %>% as.data.table()
-  n = dim(residuals_df)[1]
-  # mean <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = mean, align = "right", partial = TRUE)
-  std <- rollapply(residuals_df$residual, width = WINDOW_SIZE, FUN = sd, align = "right", partial = TRUE)
-  # residuals <- ((residuals_df$residual - mean) / sd)
-  # residuals <- residuals %>% as.matrix()
-  # cointegration_error_df = data.table(date=residuals_df$date, residual=residuals_df$residual) %>%
-  #   rename(residual=`residual.V1`) %>%
-  #   mutate(ub=THRESHOLD, lb=-THRESHOLD)
-  cointegration_error_df = residuals_df %>% mutate(std=std) %>% mutate(ub=THRESHOLD*std, lb=-THRESHOLD*std)
-
-
   # betas
   if (BETAS_TYPE == "smooth"){
     betas_df <- model_out$smooth$s
   }else{
     betas_df <- model_out$filter$m
   }
-
+  
+  residuals_df = model_out$residuals$res %>% as.data.table()
+  
+  start_date <- min(min(residuals_df$date), min(betas_df$date))
+  end_date <- min(max(residuals_df$date), max(betas_df$date))
+  cointegration_error_df <- residuals_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
+  betas_df <- betas_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
+  
+  cointegration_error_df <- cointegration_error_df %>%
+    drop_na() %>%
+    mutate(residual=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
+    mutate(ub=THRESHOLD*residual, lb=-THRESHOLD*residual) %>%
+    as.data.table()
+  
 }else if (MODEL == "rolling-ols"){
   
   # load model output
   model_out <- readRDS(file = file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds")))
   
   # cointegration error
-  cointegration_error_df <- model_out$residuals %>% drop_na() %>% mutate(ewma_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
-    mutate(ub=THRESHOLD*sqrt(ewma_vol), lb=-THRESHOLD*sqrt(ewma_vol))
-
+  residuals = model_out$residuals$residual %>% as.data.table()
+  n = dim(residuals)[1]
+  mean <- apply(residuals, 2, function(x) {roll_mean(x, width = WINDOW_SIZE, min_obs = WINDOW_SIZE)})
+  sd <- apply(residuals, 2, function(x) {roll_sd(x, width = WINDOW_SIZE, min_obs = WINDOW_SIZE)})
+  residuals <- ((residuals - mean) / sd)
+  residuals <- residuals %>% as.matrix()
+  cointegration_error_df = data.table(date=model_out$residuals$date, residual=residuals) %>%
+    rename(residual=`residual..`) %>%
+    mutate(ub=THRESHOLD, lb=-THRESHOLD)
+  
   # betas
-  betas_df <- model_out$model$coefs %>% as.data.table() %>% drop_na() %>%
-   mutate(date=cointegration_error_df$date) %>% select(date, everything()) %>% as.data.table()
-
+  betas_df <- model_out$model$coefs %>% as.data.table() %>%
+    mutate(date=cointegration_error_df$date) %>% select(date, everything()) %>% as.data.table()
 }
 
-# positions for the target (y) variable
-positions_df <- data.table(
+prices_df <- prices_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
+
+# run backtest
+signal_df <- data.table(
   date = cointegration_error_df$date
 )
-
-# Add the dynamically named column using := inside a data.table expression
-# positions_df[, (TARGET) := ifelse(
-#   lag(cointegration_error_df$residual, n = 1) >= cointegration_error_df$ub, -1,
-#   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
-# )]
-positions_df[, (TARGET) := ifelse(
+signal_df[, "signal" := ifelse(
   cointegration_error_df$residual >= cointegration_error_df$ub, -1,
   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
 )]
+output <- run_backtest(signal=signal_df, prices=prices_df, target_name="SGD")
+portfolio_returns_df <- output$portfolio_returns
+positions_df <- output$positions
 
-# fillna with zero values
-positions_df <- positions_df %>% replace(is.na(.), 0)
-
-# positions for the regressors (X)
-positions_betas_df <- merge(x = positions_df, y = betas_df, by = "date") %>% select(-date, -sym(TARGET))
-
-out_positions_betas_list <- list()
-for (i in 1:nrow(positions_betas_df)){
-  betas_row <- positions_betas_df[i,]
-  coint_error_row <- positions_df[i,]
-  
-  if (coint_error_row[[TARGET]] > 0){
-    out_positions_betas_list[[i]] <- betas_row * 1 
-  }else if (coint_error_row[[TARGET]] < 0){
-    out_positions_betas_list[[i]] <- betas_row * -1 
-  }else{
-    out_positions_betas_list[[i]] <- betas_row * 0 
-  }
-  
-}
-out_positions_betas_df <- do.call("rbind", out_positions_betas_list) %>% as.data.table()
-
-# put all positions together
-out_positions_df <- cbind(positions_df, out_positions_betas_df) %>% as.data.table()
-if (INTERCEPT == T){
-   out_positions_df <- out_positions_df %>% select(-intercept)
-}
-
-# returns data
-prices_dtref <- prices_df$date
-returns_df <- prices_df %>% select(-date)
-returns_df <- (returns_df - lag(returns_df)) / lag(returns_df)
-returns_df$date <- prices_dtref
-returns_df <- returns_df %>% select(date, everything()) %>% drop_na()
-
-# merge positions and returns 
-returns_df <- merge(out_positions_df %>% select(date), returns_df, by = "date")
-
-# check if columns are sorted correctly
-returns_list = list()
-for (colname in colnames(out_positions_df)){
-  if (colname == "date"){
-    next
-  }else{
-    returns_list[[colname]] <- returns_df[[colname]]
-  }
-}
-returns_df <- do.call("cbind", returns_list) %>% as.data.table() %>% 
-  mutate(date=out_positions_df$date[1:length(out_positions_df$date)]) %>%
-  select(date, everything())
-l <- 1
-lead_returns_df <- cbind(data.frame(date=returns_df$date[1:(dim(returns_df)[1]-l)]), lead(returns_df %>% select(-date), l) %>% drop_na()) %>% as.data.table()
-
-# generate stretegy returns
-out_positions_df <- merge(out_positions_df, lead_returns_df %>% select(date), by = "date")
-strategy_returns_df <- (out_positions_df %>% select(-date)) * (lead_returns_df %>% select(-date))
-
-ts.plot(cumprod(1+rowSums(strategy_returns_df)))
-
-strategy_returns_df <- strategy_returns_df %>% mutate(date=out_positions_df$date) %>%
-  select(date, everything()) %>% drop_na()
-
-all_cumret_df <- cumprod(1+(strategy_returns_df %>% select(-date))) %>%
-  mutate(date=strategy_returns_df$date) %>% select(date, everything())
-ret_df <- data.frame(date=strategy_returns_df$date,
-                     portfolio=rowSums(strategy_returns_df %>% select(-date))) %>% as.data.table()
+# plot cumulative returns
+ts.plot(cumprod(1+portfolio_returns_df$portfolio))
 
 outputs <- list(signal=cointegration_error_df,
-                positions=out_positions_df,
+                positions=positions_df,
                 returns=strategy_returns_df,
                 bars=prices_df,
                 bars_ret=returns_df)
