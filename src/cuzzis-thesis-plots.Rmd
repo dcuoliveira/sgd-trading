@@ -1,0 +1,138 @@
+---
+title: "Cuzzi's PhD Thesis Plots"
+output: html_notebook
+---
+
+```{r}
+rm(list=ls())
+library('dplyr')
+library('ggplot2')
+library("readxl")
+library("lubridate")
+library('padr')
+library('here')
+
+source(file.path(getwd(), 'plots', 'plot_funcs.R'))
+source(file.path(getwd(), 'models', 'utils.R'))
+
+MODEL <- "dlm"
+STRATEGY_TYPE <- "scale"
+OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
+TARGET <- "SGD"
+SCALE_TYPE <- "noscale"
+BETAS_TYPE <- "filter"
+FREQ = "weekly"
+WINDOW_SIZE <- 52 * 10
+MA_WINDOW_SIZE <- 52 * 1
+THRESHOLD <- 1.5
+INTERCEPT <- FALSE
+
+if (FREQ == "monthly"){
+  FREQ_INT <- 12
+}else if (FREQ == "weekly"){
+  FREQ_INT <- 52
+}
+
+if (INTERCEPT == T){
+  intercept_tag <- "intercept"
+}else{
+  intercept_tag <- "nointercept"
+}
+
+```
+
+```{r}
+strategy_output_path <- file.path(OUTPUT_PATH,
+                                  SCALE_TYPE,
+                                  paste0("backtest_results_",
+                                         FREQ,
+                                         "_",
+                                         WINDOW_SIZE,
+                                         "_",
+                                         STRATEGY_TYPE,
+                                         "_",
+                                         intercept_tag,
+                                         ".rds"))
+# read outputs
+output <- readRDS(strategy_output_path)
+
+# prepare outputs to read
+pnl_df <- output$pnl
+cum_pnl_df <- output$cum_pnl
+returns_df <- output$returns
+cum_returns_df <- output$cum_returns
+positions_df <- output$positions
+vol_adj_returns <- output$vol_adj_returns
+cum_vol_adj_returns <- output$cum_vol_adj_returns
+```
+
+```{r}
+ggplot(data = cum_pnl_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = date, y = portfolio)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns of $1 invested in the portfolio")
+
+```
+```{r}
+ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
+       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns of $1 invested in each asset")
+```
+
+```{r}
+ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
+       mapping = aes(x = date, y = portfolio)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns in % terms (20% vol target)")
+```
+
+```{r}
+mean <- mean(vol_adj_returns$portfolio[vol_adj_returns$portfolio!=0])
+vol <- sd(vol_adj_returns$portfolio[vol_adj_returns$portfolio!=0])
+sharpe <- mean / vol * sqrt(52)
+
+sharpe
+```
+
+
+```{r}
+ggplot(data = cum_vol_adj_returns %>%
+         select(-date, -portfolio) %>%
+         mutate_all(~.*100) %>%
+         mutate(date=cum_vol_adj_returns$date) %>%
+         melt(., "date"),
+       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns in % terms (20% vol target)")
+```
+
+```{r}
+sharpes <- list()
+i <- 1
+for (col in colnames(vol_adj_returns %>% select(-date))){
+  mean <- mean(vol_adj_returns[[col]][vol_adj_returns[[col]]!=0])
+  vol <- sd(vol_adj_returns[[col]][vol_adj_returns[[col]]!=0])
+  sharpe <- mean / vol * sqrt(52)
+  
+  sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
+  i <- i + 1
+}
+sharpes <- do.call(rbind, sharpes) %>% as.data.table()
+
+sharpes
+```
+
+
+
+
+
+
+

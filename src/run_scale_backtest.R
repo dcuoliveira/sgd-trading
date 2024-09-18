@@ -60,8 +60,7 @@ if (INTERCEPT == T){
 }
 
 # prices data
-prices_df <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>%
-  mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+prices_df <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>% mutate(date=ymd(date))
 
 if (MODEL == "dlm"){
 
@@ -91,9 +90,7 @@ if (MODEL == "dlm"){
     std <- rollapply(residuals_df$residual, width = MA_WINDOW_SIZE, FUN = sd, align = "right", partial = TRUE)
     
     cointegration_error_df$residual <- (cointegration_error_df$residual - mean) / std
-    cointegration_error_df = cointegration_error_df %>%
-      mutate(ub=THRESHOLD, lb=-THRESHOLD)
-
+    cointegration_error_df = cointegration_error_df %>% mutate(ub=THRESHOLD, lb=-THRESHOLD)
 }else if (MODEL == "rolling-ols"){
   
     # load model output
@@ -117,7 +114,7 @@ if (MODEL == "dlm"){
 
 prices_df <- prices_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
 
-# run backtest
+# prepare signal
 signal_df <- data.table(
   date = cointegration_error_df$date
 )
@@ -125,42 +122,26 @@ signal_df[, "signal" := ifelse(
   cointegration_error_df$residual >= cointegration_error_df$ub, -1,
   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
 )]
+
+# run backtest
 output <- run_backtest(signal=signal_df, betas=betas_df, prices=prices_df, target_name="SGD")
-# output <- run_backtest_cuzzi(signal=cointegration_error_df %>% dplyr::rename(signal=residual),
-#                              betas=betas_df,
-#                              prices=prices_df,
-#                              target_name="SGD")
-portfolio_returns_df <- output$portfolio_returns
+pnl_df <- output$pnl
+cum_pnl_df <- output$cum_pnl
+returns_df <- output$returns
+cum_returns_df <- output$cum_returns
+vol_adj_returns_df <- output$vol_adj_portfolio_returns
+cum_vol_adj_returns_df <- output$cum_vol_adj_portfolio_returns
 positions_df <- output$positions
 
-# plot residual
-p1 <- ggplot(cointegration_error_df, aes(x = date)) +
-  geom_line(aes(y = residual)) +               # Plot residuals
-  geom_line(aes(y = ub), linetype = "dashed", color = "red") + # Plot upper bound
-  geom_line(aes(y = lb), linetype = "dashed", color = "red") + # Plot lower bound
-  labs(title = "Contegration Error", x = "Date", y = "Value") +
-  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
-
-# plot cumulative returns
-p2 <- ggplot(data = portfolio_returns_df %>% mutate(portfolio=cumprod(1+portfolio), date=ymd(date)),
-       mapping = aes(x = date, y = portfolio)) +
-  geom_line() +
-  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Cummulative returns of $1 invested in each asset")
-
-# plot all
-grid.arrange(p1, p2, ncol = 1)
-
-# compute sharpe ratio
-sharpe <- (mean(portfolio_returns_df$portfolio) / sd(portfolio_returns_df$portfolio)) * sqrt(52)
-print(sharpe)
-
-outputs <- list(signal=cointegration_error_df,
-                positions=positions_df,
-                returns=portfolio_returns_df,
-                bars=prices_df)
+outputs <- list(
+  positions=positions_df,
+  pnl=pnl_df,
+  cum_pnl=cum_pnl_df,
+  returns=returns_df,
+  cum_returns=cum_returns_df,
+  vol_adj_returns=vol_adj_returns_df,
+  cum_vol_adj_returns=cum_vol_adj_returns_df
+)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 dir.create(file.path(OUTPUT_PATH, SCALE_TYPE), showWarnings = FALSE)

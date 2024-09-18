@@ -1,3 +1,47 @@
+roll_sd_excluding_zeros <- function(x, window_size) {
+  if (is.vector(x)) {
+    # Apply rolling standard deviation to a vector
+    result <- rollapply(
+      data = x,
+      width = window_size,
+      FUN = function(y) {
+        y_non_zero <- y[y != 0]
+        if (length(y_non_zero) < 2) {
+          return(0)
+        } else {
+          return(sd(y_non_zero))
+        }
+      },
+      by.column = FALSE,
+      align = "right",
+      fill = NA
+    )
+    result[is.na(result)] <- 0
+    return(result)
+  }else{
+    # Apply rolling standard deviation to each column of the dataframe
+    result <- as.data.frame(lapply(x, function(col) {
+      rollapply(
+        data = col,
+        width = window_size,
+        FUN = function(y) {
+          y_non_zero <- y[y != 0]
+          if (length(y_non_zero) < 2) {
+            return(0)
+          } else {
+            return(sd(y_non_zero))
+          }
+        },
+        by.column = FALSE,
+        align = "right",
+        fill = NA
+      )
+    }))
+    result[is.na(result)] <- 0
+    return(result)
+  }
+}
+
 run_backtest_cuzzi <- function(signal, prices, betas, target_name){
   
   browser()
@@ -101,57 +145,131 @@ run_backtest_cuzzi <- function(signal, prices, betas, target_name){
 }
 
 run_backtest <- function(signal, prices, betas, target_name){
-  
-  # generate positions
-  betas_positions <- list()
-  for (i in 2:dim(signal)[1]){
-    dtref <- signal$date[i]
-    sign <- signal[i][["signal"]]
-    
-    if (is.na(sign)){
-      sign <- 0
-    }
-    
-    beta_names <- colnames(betas[i,] %>% select(-date))
-    betas_tmp <- betas %>%
-      filter(date==dtref) %>%
-      select(-date) %>%
-      mutate_all(~ . * sign) %>%
-      mutate(!!paste(target_name):=sign, date=dtref) %>%
-      select(date, sym(target_name), everything())
-    
-    betas_positions[[i]] <- betas_tmp
-  }
-  positions_df <- do.call(rbind, betas_positions) %>% as.data.table()
-  
-  # computer currency returns
-  returns <- (((prices %>% select(-date)) / lag(prices %>% select(-date))) - 1) %>%
-    as.data.table() %>%
+
+  # compute price difference
+  prices_diff <- (prices %>% select(-date)) - lag(prices %>% select(-date), 1)
+  prices_diff$date <- prices$date
+  prices_diff <- prices_diff %>%
     drop_na() %>%
-    mutate(date=prices$date[2:length(prices$date)[1]]) %>%
     select(date, everything())
   
-  # lead returns
-  l <- 1
-  lead_returns <- returns %>%
-    shift(l, n=-l) %>%
-    as.data.table() %>%
-    setnames(colnames(returns)) %>%
-    mutate(date=returns$date) %>%
-    slice(1:(nrow(.)-l))
+  # compute returns
+  returns <- log(prices %>% select(-date)) - log(lag(prices %>% select(-date), 1))
+  returns$date <- prices$date
+  returns <- returns %>%
+    drop_na() %>%
+    select(date, everything())
   
-  # portfolio returns
-  start_date <-  min(min(lead_returns$date), min(positions_df$date))
-  end_date <- min(max(lead_returns$date), max(positions_df$date))
-  positions_df <- positions_df %>% filter(date>=start_date&date<=end_date)
-  lead_returns <- lead_returns %>% filter(date>=start_date&date<=end_date)
-  portfolio_returns_df <- (positions_df %>% select(-date)) * (lead_returns %>% select(-date))
-  portfolio_returns_df$date <- positions_df$date
-  portfolio_returns_df <- portfolio_returns_df %>%  select(date, everything())
-  portfolio_returns_df$portfolio <- rowSums(portfolio_returns_df %>% select(-date))
+  # start backtest
+  poisitions_out <- list()
+  prices_diff_out <- list()
+  prices_out <- list()
+  returns_out <- list()
+  for (i in 2:dim(signal)[1]){
+    d_t <- signal$date[i]
+    d_tp1 <- signal$date[i+1]
+    signal_t <- signal[i][["signal"]]
+    
+    if (is.na(sign)){
+      signal_t <- 0
+    }
+    
+    if (signal_t > 0){
+      betas_signal_t <- -1
+    }else if (signal_t < 0){
+      betas_signal_t <- 1
+    }else{
+      betas_signal_t <- 0
+    }
+    
+    # positions
+    beta_names <- colnames(betas[i,] %>% select(-date))
+    betas_tmp <- betas %>%
+      filter(date==d_t) %>%
+      select(-date) %>%
+      mutate_all(~ . * betas_signal_t) %>%
+      mutate(!!paste(target_name):=signal_t, date=d_tp1) %>%
+      select(date, sym(target_name), everything())
+    
+    # price difference
+    prices_diff_tmp <- prices_diff %>%
+      filter(date==d_tp1)
+    
+    # prices to convert pnl
+    prices_tmp <- prices %>%
+      filter(date==d_tp1)
+    
+    # returns
+    returns_tmp <- returns %>%
+      filter(date==d_tp1)
+    
+    poisitions_out[[i]] <- betas_tmp
+    prices_diff_out[[i]] <- prices_diff_tmp
+    prices_out[[i]] <- prices_tmp
+    returns_out[[i]] <- returns_tmp
+  }
   
-  output <- list(portfolio_returns=portfolio_returns_df,
-                 positions=positions_df)
+  positions_out_df <- do.call(rbind, poisitions_out) %>% as.data.table() %>% drop_na()
+  prices_diff_out_df <- do.call(rbind, prices_diff_out) %>% as.data.table()
+  prices_out_df <- do.call(rbind, prices_out) %>% as.data.table()
+  returns_out_df <- do.call(rbind, returns_out) %>% as.data.table()
+  
+  # currencies pnl
+  pnl_df <- (positions_out_df %>% select(-date)) * (prices_diff_out_df %>% select(-date))
+  ## convert pnl to usd (assumes prices are in usdxxx and not the contrary)
+  pnl_df <- pnl_df * 1 / (prices_out_df %>% select(-date))
+  ## compute portfolio pnl
+  pnl_df$portfolio <- rowSums(pnl_df)
+  ## fix format
+  pnl_df$date <- positions_out_df$date
+  pnl_df <- pnl_df %>% select(date, everything())
+  
+  # currencies portfolio log-returns
+  portfolio_returns_df <- (positions_out_df %>% select(-date)) * (returns_out_df %>% select(-date))
+  ## compute portfolio log-returns
+  portfolio_returns_df$portfolio <- rowSums(portfolio_returns_df)
+  ## vol adjusted portfolio log-returns
+  target_vol <- 20
+  portfolio_vol <- roll_sd_excluding_zeros(portfolio_returns_df, 24) * sqrt(52) * 100
+  portfolio_scaling <- target_vol / portfolio_vol
+  portfolio_scaling[as.matrix(portfolio_scaling) == Inf] <- 0
+  portfolio_scaling[as.matrix(portfolio_scaling) > 1000] <- 1000
+  portfolio_scaling <- as.data.table(portfolio_scaling)
+  vol_adj_portfolio_returns_df <- portfolio_returns_df * portfolio_scaling
+  vol_adj_portfolio_returns_df <- vol_adj_portfolio_returns_df %>%
+    mutate(date=positions_out_df$date) %>%
+    select(date, everything())
+  ## fix format
+  portfolio_returns_df$date <- positions_out_df$date
+  portfolio_returns_df <- portfolio_returns_df %>% select(date, everything())
+  
+  # currencies cumulative pnl
+  cum_pnl_df <- cumsum((pnl_df %>% select(-date)))
+  cum_pnl_df$date <- pnl_df$date
+  cum_pnl_df <- cum_pnl_df %>% select(date, everything())
+  
+  # currencies cumulative log-returns
+  cum_portfolio_returns_df <- cumsum((portfolio_returns_df %>% select(-date)))
+  cum_portfolio_returns_df$date <- portfolio_returns_df$date
+  cum_portfolio_returns_df <- cum_portfolio_returns_df %>% select(date, everything())
+  
+  # currencies cumulative log-returns
+  cum_vol_adj_portfolio_returns_df <- cumsum((vol_adj_portfolio_returns_df %>% select(-date)))
+  cum_vol_adj_portfolio_returns_df$date <- vol_adj_portfolio_returns_df$date
+  cum_vol_adj_portfolio_returns_df <- cum_vol_adj_portfolio_returns_df %>% select(date, everything())
+  
+  output <- list(
+    positions=positions_out_df,
+    prices_diff=prices_diff_out_df,
+    prices=prices_out_df,
+    pnl=pnl_df,
+    returns=portfolio_returns_df,
+    cum_pnl=cum_pnl_df,
+    cum_returns=cum_portfolio_returns_df,
+    vol_adj_portfolio_returns=vol_adj_portfolio_returns_df,
+    cum_vol_adj_portfolio_returns=cum_vol_adj_portfolio_returns_df
+    )
+  
   return(output)
 }
 
