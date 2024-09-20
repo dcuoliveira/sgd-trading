@@ -6,6 +6,7 @@ library("data.table")
 library("MTS")
 library("lubridate")
 library("optparse")
+library("gridExtra")
 
 source(file.path(getwd(), 'src', 'models', 'utils.R'))
 source(file.path(getwd(), 'src', 'models', 'models.R'))
@@ -18,9 +19,10 @@ option_list <- list(
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
-  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "noscale"),
+  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "scale"),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 10),
+  make_option(c("--ma_window_size"), type = "integer", help = "Moving Average Window Size", default = 52 * 1),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
   make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.5)
@@ -40,6 +42,7 @@ SCALE_TYPE <- args$scale_type
 BETAS_TYPE <- "filter"
 FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
+MA_WINDOW_SIZE <- args$ma_window_size
 THRESHOLD <- as.numeric(args$threshold)
 INTERCEPT <- args$intercept
 STRATEGY_TYPE <- args$strategy_type
@@ -57,7 +60,7 @@ if (INTERCEPT == T){
 }
 
 # prices data
-prices_df <- load_and_resample_currencies(freq=FREQ) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+prices_df <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>% mutate(date=ymd(date))
 
 if (MODEL == "dlm"){
   
@@ -71,6 +74,10 @@ if (MODEL == "dlm"){
     betas_df <- model_out$filter$m
   }
   
+  if (INTERCEPT == T){
+    betas_df <- betas_df %>% select(-intercept)
+  }
+  
   residuals_df = model_out$residuals$res %>% as.data.table()
   
   start_date <- min(min(residuals_df$date), min(betas_df$date))
@@ -80,10 +87,9 @@ if (MODEL == "dlm"){
   
   cointegration_error_df <- cointegration_error_df %>%
     drop_na() %>%
-    mutate(residual=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
+    mutate(residual_vol=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
     mutate(ub=THRESHOLD*residual, lb=-THRESHOLD*residual) %>%
     as.data.table()
-  
 }else if (MODEL == "rolling-ols"){
   
   # load model output
@@ -107,7 +113,7 @@ if (MODEL == "dlm"){
 
 prices_df <- prices_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
 
-# run backtest
+# prepare signal
 signal_df <- data.table(
   date = cointegration_error_df$date
 )
@@ -115,18 +121,26 @@ signal_df[, "signal" := ifelse(
   cointegration_error_df$residual >= cointegration_error_df$ub, -1,
   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
 )]
-output <- run_backtest(signal=signal_df, prices=prices_df, target_name="SGD")
-portfolio_returns_df <- output$portfolio_returns
+
+# run backtest
+output <- run_backtest(signal=signal_df, betas=betas_df, prices=prices_df, target_name="SGD")
+pnl_df <- output$pnl
+cum_pnl_df <- output$cum_pnl
+returns_df <- output$returns
+cum_returns_df <- output$cum_returns
+vol_adj_returns_df <- output$vol_adj_portfolio_returns
+cum_vol_adj_returns_df <- output$cum_vol_adj_portfolio_returns
 positions_df <- output$positions
 
-# plot cumulative returns
-ts.plot(cumprod(1+portfolio_returns_df$portfolio))
-
-outputs <- list(signal=cointegration_error_df,
-                positions=positions_df,
-                returns=strategy_returns_df,
-                bars=prices_df,
-                bars_ret=returns_df)
+outputs <- list(
+  positions=positions_df,
+  pnl=pnl_df,
+  cum_pnl=cum_pnl_df,
+  returns=returns_df,
+  cum_returns=cum_returns_df,
+  vol_adj_returns=vol_adj_returns_df,
+  cum_vol_adj_returns=cum_vol_adj_returns_df
+)
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)
 dir.create(file.path(OUTPUT_PATH, SCALE_TYPE), showWarnings = FALSE)

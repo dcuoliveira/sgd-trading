@@ -16,14 +16,14 @@ source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
 
 MODEL <- "dlm"
-STRATEGY_TYPE <- "scale"
+STRATEGY_TYPE <- "rolling_scale"
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
 TARGET <- "SGD"
 SCALE_TYPE <- "noscale"
 BETAS_TYPE <- "filter"
 FREQ = "weekly"
 WINDOW_SIZE <- 52 * 10
-MA_WINDOW_SIZE <- 52 * 1
+MA_WINDOW_SIZE <- 52 * 2
 THRESHOLD <- 1.5
 INTERCEPT <- FALSE
 
@@ -75,6 +75,14 @@ ggplot(data = cum_pnl_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = da
 
 ```
 ```{r}
+mean <- mean(returns_df$portfolio[returns_df$portfolio!=0])
+vol <- sd(returns_df$portfolio[returns_df$portfolio!=0])
+sharpe <- mean / vol * sqrt(52)
+
+sharpe
+```
+
+```{r}
 ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
        mapping = aes(x = date, y = value, colour = variable, group = variable)) +
   geom_line() +
@@ -82,6 +90,22 @@ ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Cummulative returns of $1 invested in each asset")
 ```
+```{r}
+sharpes <- list()
+i <- 1
+for (col in colnames(pnl_df %>% select(-date))){
+  mean <- mean(pnl_df[[col]][pnl_df[[col]]!=0])
+  vol <- sd(pnl_df[[col]][pnl_df[[col]]!=0])
+  sharpe <- mean / vol * sqrt(52)
+  
+  sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
+  i <- i + 1
+}
+sharpes <- do.call(rbind, sharpes) %>% as.data.table()
+
+sharpes
+```
+
 
 ```{r}
 ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
@@ -89,7 +113,7 @@ ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
   geom_line() +
   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Cummulative returns in % terms (20% vol target)")
+  ggtitle("Cummulative returns in % terms (15% vol target)")
 ```
 
 ```{r}
@@ -111,7 +135,7 @@ ggplot(data = cum_vol_adj_returns %>%
   geom_line() +
   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Cummulative returns in % terms (20% vol target)")
+  ggtitle("Cummulative returns in % terms (15% vol target)")
 ```
 
 ```{r}
