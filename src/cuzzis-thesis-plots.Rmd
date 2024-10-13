@@ -11,21 +11,22 @@ library("readxl")
 library("lubridate")
 library('padr')
 library('here')
+library("PerformanceAnalytics")
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
 
 MODEL <- "dlm"
-STRATEGY_TYPE <- "rolling_scale"
+STRATEGY_TYPE <- "ewma"
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
 TARGET <- "SGD"
-SCALE_TYPE <- "noscale"
+SCALE_TYPE <- "rolling_scale"
 BETAS_TYPE <- "filter"
 FREQ = "weekly"
-WINDOW_SIZE <- 52 * 10
-MA_WINDOW_SIZE <- 52 * 2
-THRESHOLD <- 1.5
+WINDOW_SIZE <- 52 * 2
 INTERCEPT <- FALSE
+# MA_WINDOW_SIZE <- 52 * 2
+# THRESHOLD <- 1.5
 
 if (FREQ == "monthly"){
   FREQ_INT <- 12
@@ -64,46 +65,54 @@ cum_returns_df <- output$cum_returns
 positions_df <- output$positions
 vol_adj_returns <- output$vol_adj_returns
 cum_vol_adj_returns <- output$cum_vol_adj_returns
+cointegration_error <- output$cointegration_error
 ```
 
 ```{r}
-ggplot(data = cum_pnl_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = date, y = portfolio)) +
-  geom_line() +
-  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Cummulative returns of $1 invested in the portfolio")
-
-```
-```{r}
-mean <- mean(returns_df$portfolio[returns_df$portfolio!=0])
-vol <- sd(returns_df$portfolio[returns_df$portfolio!=0])
-sharpe <- mean / vol * sqrt(52)
-
-sharpe
+write.csv(cointegration_error, "cointegration_error.csv")
+write.csv(vol_adj_returns, "vol_adj_returns.csv")
+write.csv(cum_vol_adj_returns, "cum_vol_adj_returns.csv")
 ```
 
 ```{r}
-ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
-       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
-  geom_line() +
-  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Cummulative returns of $1 invested in each asset")
+# ggplot(data = cum_pnl_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = date, y = portfolio)) +
+#   geom_line() +
+#   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   ggtitle("Cummulative returns of $1 invested in the portfolio")
 ```
-```{r}
-sharpes <- list()
-i <- 1
-for (col in colnames(pnl_df %>% select(-date))){
-  mean <- mean(pnl_df[[col]][pnl_df[[col]]!=0])
-  vol <- sd(pnl_df[[col]][pnl_df[[col]]!=0])
-  sharpe <- mean / vol * sqrt(52)
-  
-  sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
-  i <- i + 1
-}
-sharpes <- do.call(rbind, sharpes) %>% as.data.table()
 
-sharpes
+```{r}
+# mean <- mean(returns_df$portfolio[returns_df$portfolio!=0])
+# vol <- sd(returns_df$portfolio[returns_df$portfolio!=0])
+# sharpe <- mean / vol * sqrt(52)
+# 
+# sharpe
+```
+
+```{r}
+# ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
+#        mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+#   geom_line() +
+#   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   ggtitle("Cummulative returns of $1 invested in each asset")
+```
+
+```{r}
+# sharpes <- list()
+# i <- 1
+# for (col in colnames(pnl_df %>% select(-date))){
+#   mean <- mean(pnl_df[[col]][pnl_df[[col]]!=0])
+#   vol <- sd(pnl_df[[col]][pnl_df[[col]]!=0])
+#   sharpe <- mean / vol * sqrt(52)
+#   
+#   sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
+#   i <- i + 1
+# }
+# sharpes <- do.call(rbind, sharpes) %>% as.data.table()
+# 
+# sharpes
 ```
 
 
@@ -117,11 +126,86 @@ ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
 ```
 
 ```{r}
+p1 <- ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
+       mapping = aes(x = date, y = portfolio)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns in % terms (15% vol target)")
+p2 <- ggplot(data = cointegration_error, aes(x = date)) +
+  geom_line(aes(y = residual, color = "Residual"), size = 1) +
+  geom_line(aes(y = ub, color = "Bounds"), linetype = "dashed", linewidth = 0.8) +
+  geom_line(aes(y = lb, color = "Bounds"), linetype = "dashed", linewidth = 0.8) +
+  # Add labels and title
+  labs(
+    title = "Contegration Error (Stratey Signals)",
+    y = "Values",
+    x = "date",
+    color = "Legend"
+  ) +
+  # Customize colors
+  scale_color_manual(values = c("Residual" = "black", "Bounds" = "red")) +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  # Rotate the x-axis labels for readability
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+grid.arrange(p1, p2, ncol = 1)
+```
+
+```{r}
 mean <- mean(vol_adj_returns$portfolio[vol_adj_returns$portfolio!=0])
 vol <- sd(vol_adj_returns$portfolio[vol_adj_returns$portfolio!=0])
 sharpe <- mean / vol * sqrt(52)
 
 sharpe
+```
+
+```{r}
+mean <- mean(vol_adj_returns$portfolio)
+vol <- sd(vol_adj_returns$portfolio)
+sharpe <- mean / vol * sqrt(52)
+
+sharpe
+```
+
+```{r}
+ts_vol_adj_returns <- xts(vol_adj_returns$portfolio, order.by=vol_adj_returns$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_vol_adj_returns)
+annual_return <- Return.annualized(ts_vol_adj_returns)
+annual_vol <- sd.annualized(ts_vol_adj_returns)
+hit_ratio <- sum(vol_adj_returns$portfolio > 0) / sum(vol_adj_returns$portfolio != 0)
+
+# # Compute Turnover (this is a placeholder; requires portfolio position data)
+# # Assuming random turnover for illustration
+# turnover <- sum(abs(diff(vol_adj_returns)))
+
+# Create a data frame (table) of portfolio statistics
+portfolio_stats <- tibble::tibble(
+  Metric = c(
+    "Annualized Returns (%)",
+    "Annualized Vol (%)",
+    "Sharpe Ratio",
+    "Sortino Ratio",
+    "Maximum Drawdown (%)",
+    "Hit Ratio (%)"
+    # "Turnover"
+    ),
+  Value = c(
+    round(annual_return[1] * 100, 2),
+    round(annual_vol[1] * 100, 2),
+    round(sharpe_ratio[1], 2),
+    round(sortino_ratio[1], 2),
+    round(max_drawdown[1] * 100, 2),
+    round(hit_ratio * 100, 2)
+    # calmar_ratio,
+    # turnover
+    )
+)
+
+# Print the table
+print(portfolio_stats)
 ```
 
 
