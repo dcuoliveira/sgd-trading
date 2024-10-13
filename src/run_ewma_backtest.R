@@ -19,10 +19,9 @@ option_list <- list(
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "noscale"),
-  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "scale"),
-  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 10),
-  make_option(c("--ma_window_size"), type = "integer", help = "Moving Average Window Size", default = 52 * 1),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "ewma"),
+  make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
   make_option(c("--betas_type"), type = "character", help = "Betas type", default = NULL),
   make_option(c("--threshold"), help = "Threshold to the used on the strategy", default = 1.5)
@@ -42,7 +41,6 @@ SCALE_TYPE <- args$scale_type
 BETAS_TYPE <- "filter"
 FREQ = args$frequency
 WINDOW_SIZE <- args$window_size
-MA_WINDOW_SIZE <- args$ma_window_size
 THRESHOLD <- as.numeric(args$threshold)
 INTERCEPT <- args$intercept
 STRATEGY_TYPE <- args$strategy_type
@@ -87,9 +85,12 @@ if (MODEL == "dlm"){
   
   cointegration_error_df <- cointegration_error_df %>%
     drop_na() %>%
-    mutate(residual_vol=EWMAvol(residual, lambda = 0.8)$Sigma.t) %>%
-    mutate(ub=THRESHOLD*residual, lb=-THRESHOLD*residual) %>%
+    mutate(residual_vol=EWMAvol(residual,lambda = 0.8)$Sigma.t) %>%
+    mutate(ub=THRESHOLD*sqrt(residual_vol), lb=-THRESHOLD*sqrt(residual_vol)) %>%
+    select(-residual_vol) %>%
     as.data.table()
+  
+  start_date <- min(min(cointegration_error_df$date), min(cointegration_error_df$date))
 }else if (MODEL == "rolling-ols"){
   
   # load model output
@@ -112,18 +113,24 @@ if (MODEL == "dlm"){
 }
 
 prices_df <- prices_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
+betas_df <- betas_df %>% filter(date >= start_date & date <= end_date) %>% as.data.table()
 
 # prepare signal
-signal_df <- data.table(
+# signal <- build_signal_from_bounds(cointegration_error_df)
+signal <- data.table(
   date = cointegration_error_df$date
 )
-signal_df[, "signal" := ifelse(
+signal[, "signal" := ifelse(
   cointegration_error_df$residual >= cointegration_error_df$ub, -1,
   ifelse(cointegration_error_df$residual < cointegration_error_df$lb, 1, 0)
 )]
 
 # run backtest
-output <- run_backtest(signal=signal_df, betas=betas_df, prices=prices_df, target_name="SGD")
+output <- run_backtest(signal=signal,
+                       betas=betas_df,
+                       prices=prices_df,
+                       target_name="SGD",
+                       ret_type="simple")
 pnl_df <- output$pnl
 cum_pnl_df <- output$cum_pnl
 returns_df <- output$returns
@@ -133,6 +140,7 @@ cum_vol_adj_returns_df <- output$cum_vol_adj_portfolio_returns
 positions_df <- output$positions
 
 outputs <- list(
+  cointegration_error=cointegration_error_df,
   positions=positions_df,
   pnl=pnl_df,
   cum_pnl=cum_pnl_df,
