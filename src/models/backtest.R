@@ -78,8 +78,6 @@ roll_sd_excluding_zeros <- function(x, window_size) {
 
 run_backtest_cuzzi <- function(signal, prices, betas, target_name){
   
-  browser()
-  
   # build relevant lists
   positions <- list()
   dtref <- signal$date[1]
@@ -297,15 +295,13 @@ run_backtest <- function(signal, prices, betas, target_name, ret_type="log"){
   
   # currencies cumulative returns - vol adj
   if (ret_type == "log"){
-    cum_vol_adj_portfolio_returns_df <- cumsum((vol_adj_portfolio_returns_df %>% select(-date)))
+    cum_vol_adj_portfolio_returns_df <- exp(cumsum((vol_adj_portfolio_returns_df %>% select(-date))))-1
   }else if (ret_type == "simple"){
     cum_vol_adj_portfolio_returns_df <- cumprod(1+(vol_adj_portfolio_returns_df %>% select(-date))) - 1
   }
   cum_vol_adj_portfolio_returns_df$date <- vol_adj_portfolio_returns_df$date
   cum_vol_adj_portfolio_returns_df <- cum_vol_adj_portfolio_returns_df %>% select(date, everything())
-  
-  browser()
-  
+
   output <- list(
     positions=positions_out_df,
     prices_diff=prices_diff_out_df,
@@ -427,8 +423,6 @@ run_backtest_fixed <- function(signal, prices, betas, target_name){
   cum_pnl_df <- cumsum((pnl_df %>% select(-date)))
   cum_pnl_df$date <- pnl_df$date
   cum_pnl_df <- cum_pnl_df %>% select(date, everything())
-  
-  browser()
   
   # currencies cumulative returns
   # cum_portfolio_returns_df <- cumsum((portfolio_returns_df %>% select(-date)))
@@ -567,7 +561,6 @@ run_backtest_extremes <- function(signal, prices, betas, target_name){
   cum_portfolio_returns_df <- cum_portfolio_returns_df %>% select(date, everything())
   
   # currencies cumulative log-returns
-  browser()
   cum_vol_adj_portfolio_returns_df <- cumsum((vol_adj_portfolio_returns_df %>% select(-date)))
   cum_vol_adj_portfolio_returns_df$date <- vol_adj_portfolio_returns_df$date
   cum_vol_adj_portfolio_returns_df <- cum_vol_adj_portfolio_returns_df %>% select(date, everything())
