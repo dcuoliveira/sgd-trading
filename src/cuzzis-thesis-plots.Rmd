@@ -69,9 +69,9 @@ cointegration_error <- output$cointegration_error
 ```
 
 ```{r}
-write.csv(cointegration_error, "cointegration_error.csv")
-write.csv(vol_adj_returns, "vol_adj_returns.csv")
-write.csv(cum_vol_adj_returns, "cum_vol_adj_returns.csv")
+# write.csv(cointegration_error, "cointegration_error.csv")
+# write.csv(vol_adj_returns, "vol_adj_returns.csv")
+# write.csv(cum_vol_adj_returns, "cum_vol_adj_returns.csv")
 ```
 
 ```{r}
