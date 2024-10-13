@@ -13,13 +13,13 @@ source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
 MODEL <- "dlm"
 OUTPUT_PATH <- file.path(getwd(), 'src', 'data', 'outputs', MODEL)
-WINDOW_SIZE <- 52 * 10
+WINDOW_SIZE <- 52 * 2
 INTERCEPT <- FALSE
 TARGET <- "SGD"
-SCALE_TYPE <- "noscale"
+SCALE_TYPE <- "rolling_scale"
 FREQ <- "weekly"
 
-data <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>% mutate(date=ymd(date)) # %>% filter(date >= "2006-01-01")
+data <- load_and_resample_currencies(freq=FREQ, invert_quotes=FALSE) %>% mutate(date=ymd(date)) %>% filter(date >= "2000-01-01")
 data_orig <- data
 data <- data %>% select(-date) # %>% apply(2, function(x) scale(x)) %>% as.data.frame()
 
@@ -95,16 +95,16 @@ betas_df <- dlm_filter$m %>%
   mutate(date=ymd(dates)) %>%
   select(date, everything())
 
-residuals <- list()
-for (i in 1:nrow(betas_df)){
-  betas_tmp <- betas_df[i,] %>% select(-date)
-  prices_tmp <- prices_df[i,] %>% select(-date, -SGD)
-  resid_tmp <- prices_df[i, SGD] - sum(betas_tmp * prices_tmp)
-  resid_tmp <- data.table(date=betas_df[i,]$date, residual=resid_tmp)
-  residuals[[i]] <- resid_tmp
-}
-residuals_df <- do.call(rbind, residuals) %>% as.data.table()
-dlm_filter_residual$res <- residuals_df
+# residuals <- list()
+# for (i in 1:nrow(betas_df)){
+#   betas_tmp <- betas_df[i,] %>% select(-date)
+#   prices_tmp <- prices_df[i,] %>% select(-date, -SGD)
+#   resid_tmp <- prices_df[i, SGD] - sum(betas_tmp * prices_tmp)
+#   resid_tmp <- data.table(date=betas_df[i,]$date, residual=resid_tmp)
+#   residuals[[i]] <- resid_tmp
+# }
+# residuals_df <- do.call(rbind, residuals) %>% as.data.table()
+# dlm_filter_residual$res <- residuals_df
 
 # rename columns
 ## smooth parameters
