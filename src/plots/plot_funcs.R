@@ -1,5 +1,15 @@
 library("ggplot2")
 
+get_lower_tri<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+  cormat[lower.tri(cormat)]<- NA
+  return(cormat)
+}
+
 ggplot_multiple_ts = function(data,
                               key_name,
                               start_date=NULL){
