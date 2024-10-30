@@ -204,6 +204,8 @@ run_backtest <- function(signal, prices, betas, target_name, ret_type="log"){
   for (i in 2:dim(signal)[1]){
     d_t <- signal$date[i]
     d_tp1 <- signal$date[i+1]
+    
+    # here signal=sign(y_t)
     signal_t <- signal[i][["signal"]]
     
     if (is.na(sign)){
@@ -213,7 +215,7 @@ run_backtest <- function(signal, prices, betas, target_name, ret_type="log"){
     if (signal_t > 0){
       betas_signal_t <- -1
     }else if (signal_t < 0){
-      betas_signal_t <- 1
+      betas_signal_t <- +1
     }else{
       betas_signal_t <- 0
     }
