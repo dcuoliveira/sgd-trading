@@ -66,7 +66,7 @@ residual_variance <- ((summary(lm_model)$sigma)) ** 2
 m <- NCOL(X)
 dlm_model <- dlmModReg(X, addInt = INTERCEPT)
 dlm_model$FF <- dlm_model$FF
-dlm_model$GG <- dlm_model$GG * 1
+dlm_model$GG <- dlm_model$GG * 0.95
 dlm_model$W <- diag(betas_variaces)
 dlm_model$V <- residual_variance 
 dlm_model$m0 <- rep(0,2 * m)
