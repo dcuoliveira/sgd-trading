@@ -15,18 +15,17 @@ library("PerformanceAnalytics")
 
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
+source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 
-MODEL <- "dlm"
-STRATEGY_TYPE <- "ewma"
+MODEL <- "rolling-ols"
+STRATEGY_TYPE <- "scale"
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
 TARGET <- "SGD"
 SCALE_TYPE <- "rolling_scale"
-BETAS_TYPE <- "filter"
 FREQ = "weekly"
 WINDOW_SIZE <- 52 * 2
 INTERCEPT <- FALSE
-# MA_WINDOW_SIZE <- 52 * 2
-# THRESHOLD <- 1.5
+THRESHOLD <- 1
 
 if (FREQ == "monthly"){
   FREQ_INT <- 12
@@ -45,15 +44,11 @@ if (INTERCEPT == T){
 ```{r}
 strategy_output_path <- file.path(OUTPUT_PATH,
                                   SCALE_TYPE,
-                                  paste0("backtest_results_",
-                                         FREQ,
-                                         "_",
-                                         WINDOW_SIZE,
-                                         "_",
-                                         STRATEGY_TYPE,
-                                         "_",
-                                         intercept_tag,
-                                         ".rds"))
+                                  paste0("backtest_results_freq=", FREQ,
+                                           "_window-size=", WINDOW_SIZE,
+                                           "_strategy-type=", STRATEGY_TYPE,
+                                           "_", intercept_tag,
+                                           "_threshold=", THRESHOLD, ".rds"))
 # read outputs
 output <- readRDS(strategy_output_path)
 
@@ -117,7 +112,7 @@ cointegration_error <- output$cointegration_error
 
 
 ```{r}
-ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
+ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=1+portfolio),
        mapping = aes(x = date, y = portfolio)) +
   geom_line() +
   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
@@ -126,7 +121,7 @@ ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
 ```
 
 ```{r}
-p1 <- ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=portfolio*100),
+p1 <- ggplot(data = cum_vol_adj_returns %>% mutate(portfolio=1+portfolio),
        mapping = aes(x = date, y = portfolio)) +
   geom_line() +
   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
@@ -212,7 +207,7 @@ print(portfolio_stats)
 ```{r}
 ggplot(data = cum_vol_adj_returns %>%
          select(-date, -portfolio) %>%
-         mutate_all(~.*100) %>%
+         mutate_all(~.+1) %>%
          mutate(date=cum_vol_adj_returns$date) %>%
          melt(., "date"),
        mapping = aes(x = date, y = value, colour = variable, group = variable)) +
@@ -226,8 +221,8 @@ ggplot(data = cum_vol_adj_returns %>%
 sharpes <- list()
 i <- 1
 for (col in colnames(vol_adj_returns %>% select(-date))){
-  mean <- mean(vol_adj_returns[[col]][vol_adj_returns[[col]]!=0])
-  vol <- sd(vol_adj_returns[[col]][vol_adj_returns[[col]]!=0])
+  mean <- mean(vol_adj_returns[[col]])
+  vol <- sd(vol_adj_returns[[col]])
   sharpe <- mean / vol * sqrt(52)
   
   sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
@@ -238,9 +233,116 @@ sharpes <- do.call(rbind, sharpes) %>% as.data.table()
 sharpes
 ```
 
+```{r}
+melted_cor <- melt(get_upper_tri(cor(vol_adj_returns %>% select(-date, -portfolio))), na.rm = TRUE)
+ggplot(melted_cor, aes(Var2, Var1, fill = value)) + 
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue",
+                       high = "red",
+                       mid = "white",
+                       midpoint = 0,
+                       limit = c(-1,1),
+                       space = "Lab",
+                       name="Pearson\nCorrelation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1))+
+  coord_fixed() + 
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+```
 
+```{r}
+decomposition_df <- data.table(date=vol_adj_returns$date,
+                               SGD=positions_df$SGD,
+                               portfolio_ret=vol_adj_returns$portfolio)
+decomposition_df <- decomposition_df %>%
+  mutate(`Long USDSGD Ret` := ifelse(SGD > 0, portfolio_ret, 0)) %>%
+  mutate(`Short USDSGD Ret` := ifelse(SGD < 0, portfolio_ret, 0))
+decomposition_df$`Long USDSGD` <- cumprod(1+(decomposition_df$`Long USDSGD Ret`))
+decomposition_df$`Short USDSGD` <- cumprod(1+(decomposition_df$`Short USDSGD Ret`))
 
+ggplot(data = decomposition_df %>%
+         select(date, `Long USDSGD`, `Short USDSGD`) %>%
+         melt(., "date"),
+       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns decomposition for Long or Short USDSGD")
+```
 
+```{r}
+ts_vol_adj_returns <- xts(decomposition_df$`Long USDSGD Ret`, order.by=decomposition_df$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_vol_adj_returns)
+annual_return <- Return.annualized(ts_vol_adj_returns)
+annual_vol <- sd.annualized(ts_vol_adj_returns)
+hit_ratio <- sum(decomposition_df$`Long USDSGD Ret` > 0) / sum(decomposition_df$`Long USDSGD Ret` != 0)
 
+# # Compute Turnover (this is a placeholder; requires portfolio position data)
+# # Assuming random turnover for illustration
+# turnover <- sum(abs(diff(vol_adj_returns)))
+
+# Create a data frame (table) of portfolio statistics
+portfolio_stats_long <- tibble::tibble(
+  Metric = c(
+    "Annualized Returns (%)",
+    "Annualized Vol (%)",
+    "Sharpe Ratio",
+    "Sortino Ratio",
+    "Maximum Drawdown (%)",
+    "Hit Ratio (%)"
+    # "Turnover"
+    ),
+  `Long USDSGD` = c(
+    round(annual_return[1] * 100, 2),
+    round(annual_vol[1] * 100, 2),
+    round(sharpe_ratio[1], 2),
+    round(sortino_ratio[1], 2),
+    round(max_drawdown[1] * 100, 2),
+    round(hit_ratio * 100, 2)
+    # calmar_ratio,
+    # turnover
+    )
+)
+
+ts_vol_adj_returns <- xts(decomposition_df$`Short USDSGD Ret`, order.by=decomposition_df$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_vol_adj_returns)
+annual_return <- Return.annualized(ts_vol_adj_returns)
+annual_vol <- sd.annualized(ts_vol_adj_returns)
+hit_ratio <- sum(decomposition_df$`Short USDSGD Ret` > 0) / sum(decomposition_df$`Short USDSGD Ret` != 0)
+
+# # Compute Turnover (this is a placeholder; requires portfolio position data)
+# # Assuming random turnover for illustration
+# turnover <- sum(abs(diff(vol_adj_returns)))
+
+# Create a data frame (table) of portfolio statistics
+portfolio_stats_short <- tibble::tibble(
+  Metric = c(
+    "Annualized Returns (%)",
+    "Annualized Vol (%)",
+    "Sharpe Ratio",
+    "Sortino Ratio",
+    "Maximum Drawdown (%)",
+    "Hit Ratio (%)"
+    # "Turnover"
+    ),
+  `Short USDSGD` = c(
+    round(annual_return[1] * 100, 2),
+    round(annual_vol[1] * 100, 2),
+    round(sharpe_ratio[1], 2),
+    round(sortino_ratio[1], 2),
+    round(max_drawdown[1] * 100, 2),
+    round(hit_ratio * 100, 2)
+    # calmar_ratio,
+    # turnover
+    )
+)
+
+portfolio_stats_all <- merge(portfolio_stats_long, portfolio_stats_short, by = "Metric")
+portfolio_stats_all
+```
 
 
