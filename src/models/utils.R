@@ -3,6 +3,57 @@ library('lubridate')
 library('zoo')
 library("timeDate")
 
+calculate_holding_periods <- function(positions) {
+  # Initialize variables
+  holding_periods <- numeric()
+  current_period <- 0
+  in_position <- FALSE
+  
+  # Loop through positions
+  for(i in 1:length(positions)) {
+    if(positions[i] != 0) {  # If there's a position (either long or short)
+      if(!in_position) {  # Starting a new position
+        in_position <- TRUE
+        current_period <- 1
+      } else {  # Continuing existing position
+        # Check if it's the same type of position (long or short)
+        if(i > 1 && positions[i] == positions[i-1]) {
+          current_period <- current_period + 1
+        } else {  # Different type of position
+          if(current_period > 0) {
+            holding_periods <- c(holding_periods, current_period)
+          }
+          current_period <- 1
+        }
+      }
+    } else {  # No position
+      if(in_position && current_period > 0) {
+        holding_periods <- c(holding_periods, current_period)
+        current_period <- 0
+      }
+      in_position <- FALSE
+    }
+    
+    # Handle the last position if we're at the end of the series
+    if(i == length(positions) && current_period > 0) {
+      holding_periods <- c(holding_periods, current_period)
+    }
+  }
+  
+  # Calculate statistics
+  results <- list(
+    average_holding_period = mean(holding_periods),
+    median_holding_period = median(holding_periods),
+    min_holding_period = min(holding_periods),
+    max_holding_period = max(holding_periods),
+    std_holding_period = sd(holding_periods),
+    number_of_trades = length(holding_periods),
+    all_holding_periods = holding_periods
+  )
+  
+  return(results)
+}
+
 rename_tvp_params = function(df, names, r) {
   k = 1
   j = 1

@@ -17,11 +17,11 @@ source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 source(file.path(getwd(), 'models', 'utils.R'))
 source(file.path(getwd(), 'plots', 'plot_funcs.R'))
 
-MODEL <- "rolling-ols"
+MODEL <- "ols"
 STRATEGY_TYPE <- "scale"
 OUTPUT_PATH <- file.path(here(), 'src', 'data', 'outputs', MODEL)
 TARGET <- "SGD"
-SCALE_TYPE <- "rolling_scale"
+SCALE_TYPE <- "scale"
 FREQ = "weekly"
 WINDOW_SIZE <- 52 * 2
 INTERCEPT <- FALSE
@@ -52,6 +52,11 @@ strategy_output_path <- file.path(OUTPUT_PATH,
 # read outputs
 output <- readRDS(strategy_output_path)
 
+model_output_path <- file.path(OUTPUT_PATH, SCALE_TYPE, paste0("model_results_", FREQ, "_", WINDOW_SIZE, "_", intercept_tag, ".rds"))
+
+# read model outputs
+model_output <- readRDS(model_output_path)
+
 # prepare outputs to read
 pnl_df <- output$pnl
 cum_pnl_df <- output$cum_pnl
@@ -61,53 +66,105 @@ positions_df <- output$positions
 vol_adj_returns <- output$vol_adj_returns
 cum_vol_adj_returns <- output$cum_vol_adj_returns
 cointegration_error <- output$cointegration_error
+prices <- output$prices
+fitted_df <- data.table(date=ymd(names(model_output$model$fitted.values)), fitted=model_output$model$fitted.values)
+
+export_df <- merge(prices, cointegration_error, by = "date")
+export_df <- merge(export_df, fitted_df, by = "date")
+
+export_portfolio_df <- merge(cum_returns_df, cointegration_error)
+export_portfolio_df <- merge(export_portfolio_df, cointegration_error)
+
+write.csv(export_df, "all_data.csv")
+write.csv(export_portfolio_df, "all_portfolio_data.csv")
 ```
 
 ```{r}
-# write.csv(cointegration_error, "cointegration_error.csv")
-# write.csv(vol_adj_returns, "vol_adj_returns.csv")
-# write.csv(cum_vol_adj_returns, "cum_vol_adj_returns.csv")
+model_output$model$coefficients
 ```
 
 ```{r}
-# ggplot(data = cum_pnl_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = date, y = portfolio)) +
-#   geom_line() +
-#   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   ggtitle("Cummulative returns of $1 invested in the portfolio")
+ggplot(data = cum_returns_df %>% mutate(portfolio=1+portfolio), mapping = aes(x = date, y = portfolio)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns of $1 invested in the portfolio")
 ```
 
 ```{r}
-# mean <- mean(returns_df$portfolio[returns_df$portfolio!=0])
-# vol <- sd(returns_df$portfolio[returns_df$portfolio!=0])
-# sharpe <- mean / vol * sqrt(52)
-# 
-# sharpe
+p1 <- ggplot(data = cum_returns_df %>% mutate(portfolio=1+portfolio),
+       mapping = aes(x = date, y = portfolio)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns in % terms ")
+p2 <- ggplot(data = cointegration_error, aes(x = date)) +
+  geom_line(aes(y = residual, color = "Residual"), size = 1) +
+  geom_line(aes(y = ub, color = "Bounds"), linetype = "dashed", linewidth = 0.8) +
+  geom_line(aes(y = lb, color = "Bounds"), linetype = "dashed", linewidth = 0.8) +
+  # Add labels and title
+  labs(
+    title = "Contegration Error (Stratey Signals)",
+    y = "Values",
+    x = "date",
+    color = "Legend"
+  ) +
+  # Customize colors
+  scale_color_manual(values = c("Residual" = "black", "Bounds" = "red")) +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
+  # Rotate the x-axis labels for readability
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position = "none")
+grid.arrange(p1, p2, ncol = 1)
 ```
 
 ```{r}
-# ggplot(data = cum_pnl_df %>% select(-portfolio) %>% melt(., "date"),
-#        mapping = aes(x = date, y = value, colour = variable, group = variable)) +
-#   geom_line() +
-#   scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") + 
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   ggtitle("Cummulative returns of $1 invested in each asset")
+mean <- mean(returns_df$portfolio[returns_df$portfolio!=0])
+vol <- sd(returns_df$portfolio[returns_df$portfolio!=0])
+sharpe <- mean / vol * sqrt(52)
+
+sharpe
 ```
 
 ```{r}
-# sharpes <- list()
-# i <- 1
-# for (col in colnames(pnl_df %>% select(-date))){
-#   mean <- mean(pnl_df[[col]][pnl_df[[col]]!=0])
-#   vol <- sd(pnl_df[[col]][pnl_df[[col]]!=0])
-#   sharpe <- mean / vol * sqrt(52)
-#   
-#   sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
-#   i <- i + 1
-# }
-# sharpes <- do.call(rbind, sharpes) %>% as.data.table()
-# 
-# sharpes
+ggplot(data = cum_returns_df %>% select(-portfolio) %>% melt(., "date") %>% mutate(value=1+value),
+       mapping = aes(x = date, y = value, colour = variable, group = variable)) +
+  geom_line() +
+  scale_x_date(date_breaks = "2 year", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Cummulative returns of $1 invested in each asset")
+```
+
+```{r}
+sharpes <- list()
+i <- 1
+for (col in colnames(returns_df %>% select(-date))){
+  mean <- mean(returns_df[[col]])
+  vol <- sd(returns_df[[col]])
+  sharpe <- mean / vol * sqrt(52)
+
+  sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
+  i <- i + 1
+}
+sharpes <- do.call(rbind, sharpes) %>% as.data.table()
+
+sharpes
+```
+
+```{r}
+sharpes <- list()
+i <- 1
+for (col in colnames(returns_df %>% select(-date))){
+  mean <- mean(returns_df[[col]][returns_df[[col]]!=0])
+  vol <- sd(returns_df[[col]][returns_df[[col]]!=0])
+  sharpe <- mean / vol * sqrt(52)
+
+  sharpes[[i]] <- data.table(currency=col, sharpe=sharpe)
+  i <- i + 1
+}
+sharpes <- do.call(rbind, sharpes) %>% as.data.table()
+
+sharpes
 ```
 
 
@@ -164,12 +221,12 @@ sharpe
 ```
 
 ```{r}
-ts_vol_adj_returns <- xts(vol_adj_returns$portfolio, order.by=vol_adj_returns$date)
-sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
-sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
-max_drawdown <- maxDrawdown(ts_vol_adj_returns)
-annual_return <- Return.annualized(ts_vol_adj_returns)
-annual_vol <- sd.annualized(ts_vol_adj_returns)
+ts_returns <- xts(returns_df$portfolio, order.by=returns_df$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_returns)
+annual_return <- Return.annualized(ts_returns)
+annual_vol <- sd.annualized(ts_returns)
 hit_ratio <- sum(vol_adj_returns$portfolio > 0) / sum(vol_adj_returns$portfolio != 0)
 
 # # Compute Turnover (this is a placeholder; requires portfolio position data)
@@ -234,7 +291,7 @@ sharpes
 ```
 
 ```{r}
-melted_cor <- melt(get_upper_tri(cor(vol_adj_returns %>% select(-date, -portfolio))), na.rm = TRUE)
+melted_cor <- melt(get_upper_tri(cor(returns_df %>% select(-date, -portfolio))), na.rm = TRUE)
 ggplot(melted_cor, aes(Var2, Var1, fill = value)) + 
   geom_tile(color = "white") +
   scale_fill_gradient2(low = "blue",
@@ -251,14 +308,16 @@ ggplot(melted_cor, aes(Var2, Var1, fill = value)) +
 ```
 
 ```{r}
-decomposition_df <- data.table(date=vol_adj_returns$date,
+decomposition_df <- data.table(date=returns_df$date,
                                SGD=positions_df$SGD,
-                               portfolio_ret=vol_adj_returns$portfolio)
+                               portfolio_ret=returns_df$portfolio)
 decomposition_df <- decomposition_df %>%
   mutate(`Long USDSGD Ret` := ifelse(SGD > 0, portfolio_ret, 0)) %>%
   mutate(`Short USDSGD Ret` := ifelse(SGD < 0, portfolio_ret, 0))
 decomposition_df$`Long USDSGD` <- cumprod(1+(decomposition_df$`Long USDSGD Ret`))
 decomposition_df$`Short USDSGD` <- cumprod(1+(decomposition_df$`Short USDSGD Ret`))
+
+write.csv(decomposition_df, file = "long_short_ret_decomposition.csv")
 
 ggplot(data = decomposition_df %>%
          select(date, `Long USDSGD`, `Short USDSGD`) %>%
@@ -271,12 +330,12 @@ ggplot(data = decomposition_df %>%
 ```
 
 ```{r}
-ts_vol_adj_returns <- xts(decomposition_df$`Long USDSGD Ret`, order.by=decomposition_df$date)
-sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
-sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
-max_drawdown <- maxDrawdown(ts_vol_adj_returns)
-annual_return <- Return.annualized(ts_vol_adj_returns)
-annual_vol <- sd.annualized(ts_vol_adj_returns)
+ts_returns <- xts(decomposition_df$`Long USDSGD Ret`, order.by=decomposition_df$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_returns)
+annual_return <- Return.annualized(ts_returns)
+annual_vol <- sd.annualized(ts_returns)
 hit_ratio <- sum(decomposition_df$`Long USDSGD Ret` > 0) / sum(decomposition_df$`Long USDSGD Ret` != 0)
 
 # # Compute Turnover (this is a placeholder; requires portfolio position data)
@@ -306,12 +365,12 @@ portfolio_stats_long <- tibble::tibble(
     )
 )
 
-ts_vol_adj_returns <- xts(decomposition_df$`Short USDSGD Ret`, order.by=decomposition_df$date)
-sharpe_ratio <- SharpeRatio.annualized(ts_vol_adj_returns, Rf = 0)
-sortino_ratio <- SortinoRatio(ts_vol_adj_returns, MAR = 0)
-max_drawdown <- maxDrawdown(ts_vol_adj_returns)
-annual_return <- Return.annualized(ts_vol_adj_returns)
-annual_vol <- sd.annualized(ts_vol_adj_returns)
+ts_returns <- xts(decomposition_df$`Short USDSGD Ret`, order.by=decomposition_df$date)
+sharpe_ratio <- SharpeRatio.annualized(ts_returns, Rf = 0)
+sortino_ratio <- SortinoRatio(ts_returns, MAR = 0)
+max_drawdown <- maxDrawdown(ts_returns)
+annual_return <- Return.annualized(ts_returns)
+annual_vol <- sd.annualized(ts_returns)
 hit_ratio <- sum(decomposition_df$`Short USDSGD Ret` > 0) / sum(decomposition_df$`Short USDSGD Ret` != 0)
 
 # # Compute Turnover (this is a placeholder; requires portfolio position data)
@@ -344,5 +403,33 @@ portfolio_stats_short <- tibble::tibble(
 portfolio_stats_all <- merge(portfolio_stats_long, portfolio_stats_short, by = "Metric")
 portfolio_stats_all
 ```
+
+```{r}
+holding_period_long_n_short <- calculate_holding_periods(positions_df$SGD)
+holding_period_long_n_short$all_holding_periods <- NULL
+holding_period_long <- calculate_holding_periods(positions_df$SGD[positions_df$SGD >= 0])
+holding_period_long$all_holding_periods <- NULL
+holding_period_short <- calculate_holding_periods(positions_df$SGD[positions_df$SGD <= 0])
+holding_period_short$all_holding_periods <- NULL
+```
+
+```{r}
+data.table(
+  Metric=names(holding_period_long_n_short),
+  Value=unlist(holding_period_long_n_short)
+)
+```
+
+```{r}
+data.table(
+  Metric=names(holding_period_long_n_short),
+  `Long USDSGD`=unlist(holding_period_long),
+  `Short USDSGD`=unlist(holding_period_short)
+)
+```
+
+
+
+
 
 

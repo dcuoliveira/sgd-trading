@@ -16,11 +16,11 @@ source(file.path(getwd(), 'src', 'plots', 'plot_funcs.R'))
 
 # define command-line options
 option_list <- list(
-  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "rolling-ols"),
+  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "ols"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "scale"),
   make_option(c("--strategy_type"), type = "character", help = "Strategy type", default = "scale"),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--target"), type = "character", help = "Target variable name", default = "SGD"),
@@ -120,6 +120,7 @@ cum_returns_df <- output$cum_returns
 vol_adj_returns_df <- output$vol_adj_portfolio_returns
 cum_vol_adj_returns_df <- output$cum_vol_adj_portfolio_returns
 positions_df <- output$positions
+prices <- output$prices
 
 outputs <- list(
   cointegration_error=cointegration_error_df,
@@ -129,7 +130,8 @@ outputs <- list(
   returns=returns_df,
   cum_returns=cum_returns_df,
   vol_adj_returns=vol_adj_returns_df,
-  cum_vol_adj_returns=cum_vol_adj_returns_df
+  cum_vol_adj_returns=cum_vol_adj_returns_df,
+  prices=prices
 )
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)

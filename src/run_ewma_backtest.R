@@ -117,6 +117,7 @@ cum_returns_df <- output$cum_returns
 vol_adj_returns_df <- output$vol_adj_portfolio_returns
 cum_vol_adj_returns_df <- output$cum_vol_adj_portfolio_returns
 positions_df <- output$positions
+prices <- output$prices
 
 outputs <- list(
   cointegration_error=cointegration_error_df,
@@ -126,7 +127,8 @@ outputs <- list(
   returns=returns_df,
   cum_returns=cum_returns_df,
   vol_adj_returns=vol_adj_returns_df,
-  cum_vol_adj_returns=cum_vol_adj_returns_df
+  cum_vol_adj_returns=cum_vol_adj_returns_df,
+  prices=prices
 )
 
 dir.create(file.path(OUTPUT_PATH), showWarnings = FALSE)

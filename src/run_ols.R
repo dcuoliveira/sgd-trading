@@ -7,7 +7,6 @@ library("roll")
 library("rlang")
 library("reshape2")
 library("optparse")
-library("rollRegres")
 
 source(file.path(here(), 'src', 'models', 'utils.R'))
 source(file.path(here(), 'src', 'models', 'models.R'))
@@ -15,11 +14,11 @@ source(file.path(here(), 'src', 'plots', 'plot_funcs.R'))
 
 # define command-line options
 option_list <- list(
-  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "rolling-ols"),
+  make_option(c("--model_name"), type = "character", help = "Model name for output", default = "ols"),
   make_option(c("--output_path"), type = "character", help = "Output path", default = file.path(here(), 'src', 'data', 'outputs')),
   make_option(c("--frequency"), type = "character", help = "Frequency to parse the data", default = "weekly"),
   make_option(c("--intercept"), type = "logical", help = "Intercept", default = FALSE),
-  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "rolling_scale"),
+  make_option(c("--scale_type"), type = "character", help = "Scale type", default = "scale"),
   make_option(c("--num_cores"), type = "integer", help = "Number of cores", default = 1),
   make_option(c("--window_size"), type = "integer", help = "Window size", default = 52 * 2),
   make_option(c("--target"), type = "character", help = "Target of the model", default = "SGD")
@@ -51,7 +50,7 @@ if (INTERCEPT == T){
 }
 
 if (SCALE_TYPE == "scale"){
-  data <- data %>% lapply(scale) %>% as.data.frame()
+  data <- data %>% lapply(scale) %>% as.data.table()
   row.names(data) <- data_orig$date
   dates <- ymd(row.names(data))
 }else if (SCALE_TYPE == "rolling_scale"){
@@ -67,48 +66,31 @@ if (SCALE_TYPE == "scale"){
   dates <- ymd(row.names(data))
 }
 
-rolling_ols <- roll_regres(formula = model_formula,
-                           data = data,
-                           min_obs = WINDOW_SIZE,
-                           do_downdates = TRUE,
-                           width = WINDOW_SIZE) # width only used when do_downdates=T
+ols <- lm(formula = model_formula,
+          data = data)
 
 # residuals
-betas = rolling_ols$coefs
-X <- data
-if (INTERCEPT == T){
-  X <- cbind(1, X)
-  colnames(X)[1] <- "(Intercept)"
-}
-X <- X[, colnames(X) %in% colnames(betas)]
-y <- data[TARGET]
-
-y <- as.matrix(y)
-X <- as.matrix(X)
-betas <- as.matrix(betas)
-
-y_hat <- matrix(0, nrow = dim(betas)[1], ncol = 1)
-for (i in 1:dim(betas)[1]){
-  y_hat[i,] <- betas[i,] %*% X[i,]
-}
-
-residuals <- data.table(resid=(y - y_hat), keep.rownames = TRUE)
-colnames(residuals) <- c("date", "residual")
+residuals <- data.table(date=dates, residual=ols$residuals)
 residuals$date <- ymd(residuals$date)
+ts.plot(residuals$residual)
 
-# fix name
-date <- rownames(rolling_ols$coefs)
-rolling_ols$coefs <- rolling_ols$coefs %>% as.data.table()
+# expand coef vector to matrix
+n_rows <- dim(residuals)[1]
+coefs_df <- matrix(rep(ols$coefficients, n_rows), nrow = n_rows, byrow = TRUE) %>%
+  as.data.table()
+colnames(coefs_df) = names(ols$coefficients)
+coefs_df$date <- ymd(residuals$date) 
+coefs_df <- coefs_df %>% select(date, everything())
+
 if (INTERCEPT == T){
-  rolling_ols$coefs <- rolling_ols$coefs %>% rename("intercept" = `(Intercept)`)
+  coefs_df <- coefs_df %>% rename("intercept" = `(Intercept)`)
 }
-rolling_ols$coefs <- rolling_ols$coefs %>% mutate(date=ymd(date)) %>% select(date, everything())
 
 # outputs
-rolling_ols_out <- list(model=rolling_ols,
+rolling_ols_out <- list(model=ols,
                         residuals=list(res=residuals),
                         prices=data_orig,
-                        filter=list(m=rolling_ols$coefs))
+                        filter=list(m=coefs_df))
 
 if (INTERCEPT == T){
   intercept_tag <- "intercept"
