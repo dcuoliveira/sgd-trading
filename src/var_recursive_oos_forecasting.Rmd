@@ -106,28 +106,11 @@ for (fwd in FWD_NAMES) {
 }
 ```
 
-## Test the Number of Cointegrating Vectors
-
-```{r}
-vecm_result <- ca.jo(train_ccy_df, ecdet = 'const', type = 'trace', K = 2, spec = 'longrun')
-summary(vecm_result)
-```
-
-## Estimate VECM with Given Number of Cointegrating Vectors
-
-```{r}
-selected_r <- 1
-
-vecm_model <- VECM(data=train_ccy_df, lag=1, r = selected_r, estim="ML", include="none", LRinclude="none")
-summary(vecm_model)
-```
-
 ## Recursive Forecasting of the Test Data
 
 ```{r}
 n_test       <- nrow(test_ccy_df)
-selected_lag <- vecm_model$lag
-selected_r   <- 1   # example cointegration rank
+selected_lag <- 1
 h            <- 24  # maximum horizon
 
 # Make a named list of data frames for forecasts
@@ -167,26 +150,26 @@ for (i in seq_len(n_test)) {
   
   # Add one more row from the test data into the training sample
   current_data <- rbind(train_ccy_df, test_ccy_df[1:i, ])
-  
-  # Re-estimate the VECM
-  vecm_model <- VECM(
-    data  = current_data,
-    lag   = selected_lag,
-    r     = selected_r,
-    estim = "ML",
+
+  # estimate VAR model
+  var_model <- tsDyn::lineVar(
+    data=current_data,
+    lag=selected_lag,
     include="none",
-    LRinclude="none"
+    LRinclude="none",
+    model="VAR",
+    I="level"
   )
   
-  # Predict up to h steps ahead (returns a matrix/df with rows = horizons)
-  pred_vecm <- predict(vecm_model, n.ahead = h)
+  # predict with var
+  pred_var <- predict(var_model, n.ahead = h)
   
   # Store forecasts and actuals for each horizon
   for (fwd in FWD_NAMES) {
     horizon_idx <- FWD_NAMES_MAPPINGS[[fwd]]  # e.g., 1, 2, 3, 6, 12, 24
     
     # Store the predicted row for this horizon
-    forecasts_list[[fwd]][i, ] <- pred_vecm[horizon_idx, ]
+    forecasts_list[[fwd]][i, ] <- pred_var[horizon_idx, ]
 
     # Store the "true" value from test_ccy_df
     actual_row <- i + horizon_idx
@@ -258,7 +241,7 @@ summary_df <- summary_df %>%
   rename(
     Tenor = h,
     Currency = ccy,
-    VECM_RMSE_Ratio = model_ratio,
+    VAR_RMSE_Ratio = model_ratio,
     FWD_RMSE_Ratio = fwd_ratio
   )
 ```
@@ -274,13 +257,13 @@ summary_df %>% filter(Currency == 'USDSGD Curncy')
 ```{r}
 # Prepare long format for plotting
 plot_data <- summary_df %>%
-  select(Tenor, Currency, VECM_RMSE_Ratio, FWD_RMSE_Ratio) %>%
-  pivot_longer(cols = c(VECM_RMSE_Ratio, FWD_RMSE_Ratio),
+  select(Tenor, Currency, VAR_RMSE_Ratio, FWD_RMSE_Ratio) %>%
+  pivot_longer(cols = c(VAR_RMSE_Ratio, FWD_RMSE_Ratio),
                names_to = "Model", values_to = "RMSE_Ratio")
 
 # Optional: clean model names
 plot_data$Model <- recode(plot_data$Model,
-                          VECM_RMSE_Ratio = "VECM",
+                          VAR_RMSE_Ratio = "VAR",
                           FWD_RMSE_Ratio  = "FWD")
 
 # Plot
@@ -290,7 +273,7 @@ ggplot(plot_data, aes(x = Tenor, y = RMSE_Ratio, color = Model, group = Model)) 
   geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
   facet_wrap(~ Currency, scales = "free_y") +
   labs(
-    title = "RMSE Ratio (VECM / RW) per Currency",
+    title = "RMSE Ratio (VAR / RW) per Currency",
     y = "RMSE Ratio",
     x = "Tenor"
   ) +
@@ -300,3 +283,4 @@ ggplot(plot_data, aes(x = Tenor, y = RMSE_Ratio, color = Model, group = Model)) 
     strip.text = element_text(size = 10, face = "bold")
   )
 ```
+
