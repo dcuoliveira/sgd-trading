@@ -1,0 +1,302 @@
+
+## Load Relevent Packages
+
+```{r}
+rm(list=ls())
+library('readxl')
+library('here')
+library('dplyr')
+library('lubridate')
+library('urca')
+library('tsDyn')
+library('data.table')
+library('purrr')
+library('tidyr')
+library('ggplot2')
+library('Metrics')
+```
+
+## Define Parameters of the Study
+
+```{r}
+SPOTS = c(
+  'USDSGD', 'USDKRW', 'USDMYR', 'USDCNY', 'USDTHB',
+  'USDIDR', 'USDTWD', 'USDINR', 'USDTWD', 'USDJPY'
+  # 'USDAUD', 'USDEUR', 'USDGBP'
+)
+
+FWD_NAMES = c(
+  '1M', '2M', '3M', '6M', '12M', '2Y'
+)
+
+FWD_NAMES_MAPPINGS = c(
+  '1M' = 1, '2M' = 2, '3M' = 3, '6M' = 6, '12M' = 12, '2Y' = 24
+)
+
+INPUT_PATH = here('src', 'data', 'inputs')
+CCYS_FILE_NAME = 'daily-currencies-forwards.xlsx'
+TRAIN_END_DATE = '2005-01-01'
+```
+
+## Load Data
+
+```{r}
+ccy_list = list()
+for (ccy in SPOTS) {
+  daily_currencies_forwards <- read_excel(
+    file.path(INPUT_PATH, CCYS_FILE_NAME),
+    sheet = ccy
+  )
+  selected_ccy <- daily_currencies_forwards %>% select(date, paste0(ccy, ' Curncy'))
+  ccy_list[[ccy]] <- selected_ccy
+}
+
+# Merge all the data into one dataframe using the date column
+ccy_df <- Reduce(function(x, y) merge(x, y, by = 'date', all = TRUE), ccy_list)
+
+# Resample prices to monthly frequency by the last observation of the month
+ccy_df$date <- ymd(ccy_df$date)
+ccy_df <- ccy_df %>% group_by(year(date), month(date)) %>% slice(n()) %>% ungroup() %>%
+  arrange(date) %>% select(-`year(date)`, -`month(date)`) %>% tidyr::drop_na()
+
+# Select train and test data
+train_ccy_df <- ccy_df %>% filter(date <= TRAIN_END_DATE)
+train_dates <- train_ccy_df$date
+train_ccy_df <- train_ccy_df %>% select(-date)
+test_ccy_df <- ccy_df %>% filter(date > TRAIN_END_DATE)
+test_dates <- test_ccy_df$date
+test_ccy_df <- test_ccy_df %>% select(-date)
+```
+
+```{r}
+train_curve_list = list()
+test_curve_list = list()
+for (fwd in FWD_NAMES) {
+  fwd_list = list()
+  for (ccy in SPOTS) {
+    col_types <-  c('date', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric')
+    daily_currencies_forwards <- read_excel(
+      file.path(INPUT_PATH, CCYS_FILE_NAME),
+      sheet = ccy,
+      col_types = col_types
+    )
+    
+    
+    selected_ccy <- daily_currencies_forwards %>% select(date, paste0(ccy, fwd, ' Curncy'))
+    fwd_list[[ccy]] <- selected_ccy
+  }
+  # Merge all the data into one dataframe using the date column
+  fwd_df <- Reduce(function(x, y) merge(x, y, by = 'date', all = TRUE), fwd_list)
+  
+  # Resample prices to monthly frequency by the last observation of the month
+  fwd_df$date <- ymd(fwd_df$date)
+  fwd_df <- fwd_df %>% group_by(year(date), month(date)) %>% slice(n()) %>% ungroup() %>%
+    arrange(date) %>% select(-`year(date)`, -`month(date)`) %>% tidyr::drop_na()
+  
+  # Select train and test data
+  train_fwd_df <- fwd_df %>% filter(date <= TRAIN_END_DATE)
+  train_fwd_dates <- train_fwd_df$date
+  train_fwd_df <- train_fwd_df %>% select(-date)
+  test_fwd_df <- fwd_df %>% filter(date > TRAIN_END_DATE)
+  test_fwd_dates <- test_fwd_df$date
+  test_fwd_df <- test_fwd_df %>% select(-date)
+
+  train_curve_list[[fwd]] <- train_fwd_df
+  test_curve_list[[fwd]] <- test_fwd_df
+}
+```
+
+## Test the Number of Cointegrating Vectors
+
+```{r}
+vecm_result <- ca.jo(train_ccy_df, ecdet = 'const', type = 'trace', K = 2, spec = 'longrun')
+summary(vecm_result)
+```
+
+## Estimate VECM with Given Number of Cointegrating Vectors
+
+```{r}
+selected_r <- 2
+
+vecm_model <- VECM(data=train_ccy_df, lag=1, r = selected_r, estim="ML", include="none", LRinclude="none")
+summary(vecm_model)
+```
+
+## Recursive Forecasting of the Test Data
+
+```{r}
+n_test       <- nrow(test_ccy_df)
+selected_lag <- vecm_model$lag
+selected_r   <- 2   # example cointegration rank
+h            <- 24  # maximum horizon
+
+# Make a named list of data frames for forecasts
+forecasts_list <- lapply(FWD_NAMES, function(fwd) {
+  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
+  colnames(df) <- colnames(test_ccy_df)
+  df
+})
+names(forecasts_list) <- FWD_NAMES
+
+# Make a parallel named list of data frames for the actuals
+actuals_list <- lapply(FWD_NAMES, function(fwd) {
+  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
+  colnames(df) <- colnames(test_ccy_df)
+  df
+})
+names(actuals_list) <- FWD_NAMES
+
+# Make a named list of data frames for random walk forecasts
+forecasts_rw_list <- lapply(FWD_NAMES, function(fwd) {
+  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
+  colnames(df) <- colnames(test_ccy_df)
+  df
+})
+names(forecasts_rw_list) <- FWD_NAMES
+
+# Make a named list of data frames for forward forecasts
+forecasts_fwd_list <- lapply(FWD_NAMES, function(fwd) {
+  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
+  colnames(df) <- colnames(test_ccy_df)
+  df
+})
+names(forecasts_fwd_list) <- FWD_NAMES
+
+# Loop over the test set, refit the model, and fill forecasts & actuals
+for (i in seq_len(n_test)) {
+  
+  # Add one more row from the test data into the training sample
+  current_data <- rbind(train_ccy_df, test_ccy_df[1:i, ])
+  
+  # Re-estimate the VECM
+  vecm_model <- VECM(
+    data  = current_data,
+    lag   = selected_lag,
+    r     = selected_r,
+    estim = "ML",
+    include="none",
+    LRinclude="none"
+  )
+  
+  # Predict up to h steps ahead (returns a matrix/df with rows = horizons)
+  pred_vecm <- predict(vecm_model, n.ahead = h)
+  
+  # Store forecasts and actuals for each horizon
+  for (fwd in FWD_NAMES) {
+    horizon_idx <- FWD_NAMES_MAPPINGS[[fwd]]  # e.g., 1, 2, 3, 6, 12, 24
+    
+    # Store the predicted row for this horizon
+    forecasts_list[[fwd]][i, ] <- pred_vecm[horizon_idx, ]
+
+    # Store the "true" value from test_ccy_df
+    actual_row <- i + horizon_idx
+    if (actual_row <= n_test) {
+      actuals_list[[fwd]][i, ] <- test_ccy_df[actual_row, ]
+    }
+    
+    # Store the forward curve forecast
+    if (i > horizon_idx) {
+      forecasts_fwd_list[[fwd]][i, ] <- test_curve_list[[fwd]][i, ]
+    }
+    
+    # Store the random walk forecast
+    if (i > horizon_idx) {
+      forecasts_rw_list[[fwd]][i, ] <- current_data[dim(current_data)[1]-1, ]
+    }
+  }
+}
+```
+
+```{r}
+complete_cases_vector_pairs <- function(f, a) {
+  valid_idx <- complete.cases(f, a)
+  df <- data.frame(f, a)
+  df <- df[complete.cases(df), ]
+  return(df)
+}
+
+summary <- list()
+i <- 1
+for (h in FWD_NAMES) {
+  for (ccy_name in SPOTS) {
+    
+    # build ccy
+    ccy <- paste0(ccy_name, ' Curncy')
+    
+    # predictions
+    model_forecast <- forecasts_list[[h]][[ccy]]
+    fwd_forecast <- forecasts_fwd_list[[h]][[ccy]]
+    rw_forecast <- forecasts_rw_list[[h]][[ccy]]
+    
+    # real values
+    actual_forecast <- actuals_list[[h]][[ccy]]
+    
+    # complete cases using complete_cases_vector_pairs
+    model_forecast <- complete_cases_vector_pairs(model_forecast, actual_forecast)
+    fwd_forecast <- complete_cases_vector_pairs(fwd_forecast, actual_forecast)
+    rw_forecast <- complete_cases_vector_pairs(rw_forecast, actual_forecast)
+    
+    tmp_summary <- data.frame(
+      h = h,
+      ccy = ccy,
+      rmse_model = rmse(model_forecast$f, model_forecast$a),
+      rmse_fwd = rmse(fwd_forecast$f, fwd_forecast$a),
+      rmse_rw = rmse(rw_forecast$f, rw_forecast$a)
+    )
+    summary[[i]] <- tmp_summary
+    i <- i + 1
+  }
+}
+summary_df <- do.call(rbind, summary) %>% as.data.table()
+
+# build ratios
+summary_df <- summary_df %>%
+  mutate(
+    model_ratio = rmse_model / rmse_rw,
+    fwd_ratio = rmse_fwd / rmse_rw
+  ) %>%
+  rename(
+    Tenor = h,
+    Currency = ccy,
+    VECM_RMSE_Ratio = model_ratio,
+    FWD_RMSE_Ratio = fwd_ratio
+  )
+```
+
+```{r}
+summary_df
+```
+
+```{r}
+summary_df %>% filter(Currency == 'USDSGD Curncy')
+```
+
+```{r}
+# Prepare long format for plotting
+plot_data <- summary_df %>%
+  select(Tenor, Currency, VECM_RMSE_Ratio, FWD_RMSE_Ratio) %>%
+  pivot_longer(cols = c(VECM_RMSE_Ratio, FWD_RMSE_Ratio),
+               names_to = "Model", values_to = "RMSE_Ratio")
+
+# Optional: clean model names
+plot_data$Model <- recode(plot_data$Model,
+                          VAR_RMSE_Ratio = "VAR",
+                          FWD_RMSE_Ratio  = "FWD")
+
+# Plot
+ggplot(plot_data, aes(x = Tenor, y = RMSE_Ratio, color = Model, group = Model)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ Currency, scales = "free_y") +
+  labs(
+    title = "RMSE Ratio (Model / RW) per Currency",
+    y = "RMSE Ratio",
+    x = "Tenor"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    strip.text = element_text(size = 10, face = "bold")
+  )
+```
