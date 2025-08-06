@@ -59,6 +59,13 @@ ccy_df$date <- ymd(ccy_df$date)
 ccy_df <- ccy_df %>% group_by(year(date), month(date)) %>% slice(n()) %>% ungroup() %>%
   arrange(date) %>% select(-`year(date)`, -`month(date)`) %>% tidyr::drop_na()
 
+monthly_currencies_forwards <- daily_currencies_forwards %>%
+  group_by(year = year(date), month = month(date)) %>%
+  slice_max(order_by = date, n = 1) %>%
+  ungroup() %>%
+  arrange(date) %>%
+  select(-year, -month)
+
 # Select train and test data
 train_ccy_df <- ccy_df %>% filter(date <= TRAIN_END_DATE)
 train_dates <- train_ccy_df$date
@@ -109,92 +116,95 @@ for (fwd in FWD_NAMES) {
 ## Recursive Forecasting of the Test Data
 
 ```{r}
+# Setup
 n_test       <- nrow(test_ccy_df)
-selected_lag <- 0
+selected_lag <- 1
 h            <- 24  # maximum horizon
 
-# Make a named list of data frames for forecasts
-forecasts_list <- lapply(FWD_NAMES, function(fwd) {
-  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
-  colnames(df) <- colnames(test_ccy_df)
-  df
-})
-names(forecasts_list) <- FWD_NAMES
+# Initialize empty lists of data.tables per horizon
+FWD_NAMES <- names(FWD_NAMES_MAPPINGS)
 
-# Make a parallel named list of data frames for the actuals
-actuals_list <- lapply(FWD_NAMES, function(fwd) {
-  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
-  colnames(df) <- colnames(test_ccy_df)
-  df
-})
-names(actuals_list) <- FWD_NAMES
+forecasts_list     <- setNames(vector("list", length(FWD_NAMES)), FWD_NAMES)
+actuals_list       <- setNames(vector("list", length(FWD_NAMES)), FWD_NAMES)
+forecasts_rw_list  <- setNames(vector("list", length(FWD_NAMES)), FWD_NAMES)
+forecasts_fwd_list <- setNames(vector("list", length(FWD_NAMES)), FWD_NAMES)
 
-# Make a named list of data frames for random walk forecasts
-forecasts_rw_list <- lapply(FWD_NAMES, function(fwd) {
-  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
-  colnames(df) <- colnames(test_ccy_df)
-  df
-})
-names(forecasts_rw_list) <- FWD_NAMES
+for (fwd in FWD_NAMES) {
+  forecasts_list[[fwd]]     <- data.table()
+  actuals_list[[fwd]]       <- data.table()
+  forecasts_rw_list[[fwd]]  <- data.table()
+  forecasts_fwd_list[[fwd]] <- data.table()
+}
 
-# Make a named list of data frames for forward forecasts
-forecasts_fwd_list <- lapply(FWD_NAMES, function(fwd) {
-  df <- data.frame(matrix(NA, nrow = n_test, ncol = ncol(test_ccy_df)))
-  colnames(df) <- colnames(test_ccy_df)
-  df
-})
-names(forecasts_fwd_list) <- FWD_NAMES
+betas_sgd <- list()
 
-# Loop over the test set, refit the model, and fill forecasts & actuals
-for (i in seq_len(n_test)) {
-  
-  # Add one more row from the test data into the training sample
+# Loop over the test set
+for (i in seq_len(n_test - 1)) {
   current_data <- rbind(train_ccy_df, test_ccy_df[1:i, ])
-
-  # estimate and predict h steps ahead for each ccy using lm()
+  
+  tail(current_data, 1)
+  
+  current_data <- log(current_data)
+  
   pred_ols <- list()
-  for (ccy in SPOTS){
+  betas <- list()
+
+  for (ccy in c("USDSGD")) {
     ols_model <- lm(
       as.formula(paste0('`', ccy, ' Curncy` ~ . -1')),
       data = current_data
     )
-    tmp_pred_ols <- predict(ols_model)
-    
-    # select last row of predictions
-    tmp_pred_ols_val <- tail(tmp_pred_ols, n = 1)
-    
-    tmp_pred_ols <- data.frame(ccy = rep(tmp_pred_ols_val, h)) %>%
+
+    tmp_betas <- ols_model$coefficients
+    tmp_X <- current_data[nrow(current_data), ]
+    tmp_X[[ccy]] <- NULL
+
+    betas_names <- gsub('`', '', names(tmp_betas))
+    tmp_X <- tmp_X[match(betas_names, names(tmp_X))]
+
+    tmp_pred_ols_log <- sum(tmp_X * tmp_betas)
+    tmp_pred_ols <- exp(tmp_pred_ols_log)
+
+    tmp_pred_ols <- data.frame(ccy = rep(tmp_pred_ols, h)) %>%
       rename(!!paste0(ccy, ' Curncy') := ccy)
-    row.names(tmp_pred_ols) <- dim(current_data)[1] + seq(1, h)
-    
+    row.names(tmp_pred_ols) <- nrow(current_data) + seq(1, h)
+
     pred_ols[[ccy]] <- tmp_pred_ols
+    betas[[ccy]] <- tmp_betas
+    if (ccy == 'USDSGD') {
+      betas_sgd[[i]] <- tmp_betas
+    }
   }
+
   pred_ols <- do.call(cbind, pred_ols) %>% as.data.frame()
   
-  # Store forecasts and actuals for each horizon
   for (fwd in FWD_NAMES) {
-    horizon_idx <- FWD_NAMES_MAPPINGS[[fwd]]  # e.g., 1, 2, 3, 6, 12, 24
-    
-    # Store the predicted row for this horizon
-    forecasts_list[[fwd]][i, ] <- pred_ols[horizon_idx, ]
+    horizon_idx <- FWD_NAMES_MAPPINGS[[fwd]]
 
-    # Store the "true" value from test_ccy_df
+    # VECM forecast
+    tmp_pred_ols <- pred_ols[horizon_idx, ]
+    forecasts_list[[fwd]] <- rbind(forecasts_list[[fwd]], as.data.table(as.list(tmp_pred_ols)))
+
+    # Actuals
     actual_row <- i + horizon_idx
     if (actual_row <= n_test) {
-      actuals_list[[fwd]][i, ] <- test_ccy_df[actual_row, ]
+      tmp_true <- test_ccy_df[actual_row, ]
+      actuals_list[[fwd]] <- rbind(actuals_list[[fwd]], as.data.table(as.list(tmp_true)))
     }
-    
-    # Store the forward curve forecast
-    if (i > horizon_idx) {
-      forecasts_fwd_list[[fwd]][i, ] <- test_curve_list[[fwd]][i, ]
-    }
-    
-    # Store the random walk forecast
-    if (i > horizon_idx) {
-      forecasts_rw_list[[fwd]][i, ] <- current_data[dim(current_data)[1]-1, ]
-    }
+
+    # Forward forecast
+    tmp_fwd <- test_curve_list[[fwd]][i, ]
+    forecasts_fwd_list[[fwd]] <- rbind(forecasts_fwd_list[[fwd]], as.data.table(as.list(tmp_fwd)))
+
+    # Random walk
+    tmp_rw <- exp(current_data[dim(current_data)[1], ])
+    forecasts_rw_list[[fwd]] <- rbind(forecasts_rw_list[[fwd]], as.data.table(as.list(tmp_rw)))
   }
 }
+```
+
+```{r}
+tmp_betas
 ```
 
 ```{r}
@@ -209,29 +219,41 @@ summary <- list()
 i <- 1
 for (h in FWD_NAMES) {
   for (ccy_name in SPOTS) {
-    
-    # build ccy
-    ccy <- paste0(ccy_name, ' Curncy')
-    
     # predictions
-    model_forecast <- forecasts_list[[h]][[ccy]]
-    fwd_forecast <- forecasts_fwd_list[[h]][[ccy]]
-    rw_forecast <- forecasts_rw_list[[h]][[ccy]]
+    model_forecast <- forecasts_list[[h]][[paste0(ccy_name, ' Curncy')]]
+    fwd_forecast <- forecasts_fwd_list[[h]][[paste0(ccy_name, h, ' Curncy')]]
+    rw_forecast <- forecasts_rw_list[[h]][[paste0(ccy_name, ' Curncy')]]
     
     # real values
-    actual_forecast <- actuals_list[[h]][[ccy]]
+    actual_forecast <- actuals_list[[h]][[paste0(ccy_name, ' Curncy')]]
+    
+    n_dim_forecast <- length(model_forecast)
+    n_dim_actual <- length(actual_forecast)
+    if (n_dim_forecast != n_dim_actual) {
+      model_forecast <- model_forecast[1:n_dim_actual]
+    }
+    
+    n_dim_fwd <- length(fwd_forecast)
+    if (n_dim_fwd != n_dim_actual) {
+      fwd_forecast <- fwd_forecast[1:n_dim_actual]
+    }
+    
+    n_dim_rw <- length(rw_forecast)
+    if (n_dim_rw != n_dim_actual) {
+      rw_forecast <- rw_forecast[1:n_dim_actual]
+    }
     
     # complete cases using complete_cases_vector_pairs
-    model_forecast <- complete_cases_vector_pairs(model_forecast, actual_forecast)
-    fwd_forecast <- complete_cases_vector_pairs(fwd_forecast, actual_forecast)
-    rw_forecast <- complete_cases_vector_pairs(rw_forecast, actual_forecast)
+    model_forecast_df <- complete_cases_vector_pairs(model_forecast, actual_forecast)
+    fwd_forecast_df <- complete_cases_vector_pairs(fwd_forecast, actual_forecast)
+    rw_forecast_df <- complete_cases_vector_pairs(rw_forecast, actual_forecast)
     
     tmp_summary <- data.frame(
       h = h,
-      ccy = ccy,
-      rmse_model = rmse(model_forecast$f, model_forecast$a),
-      rmse_fwd = rmse(fwd_forecast$f, fwd_forecast$a),
-      rmse_rw = rmse(rw_forecast$f, rw_forecast$a)
+      ccy = ccy_name,
+      rmse_model = rmse(model_forecast_df$f, model_forecast_df$a),
+      rmse_fwd = rmse(fwd_forecast_df$f, fwd_forecast_df$a),
+      rmse_rw = rmse(rw_forecast_df$f, rw_forecast_df$a)
     )
     summary[[i]] <- tmp_summary
     i <- i + 1
@@ -254,12 +276,9 @@ summary_df <- summary_df %>%
 ```
 
 ```{r}
-summary_df
+summary_df %>% filter(Currency == "USDSGD")
 ```
 
-```{r}
-summary_df %>% filter(Currency == 'USDSGD Curncy')
-```
 
 ```{r}
 # Prepare long format for plotting
@@ -270,7 +289,7 @@ plot_data <- summary_df %>%
 
 # Optional: clean model names
 plot_data$Model <- recode(plot_data$Model,
-                          OLS_RMSE_Ratio = "VAR",
+                          OLS_RMSE_Ratio = "OLS",
                           FWD_RMSE_Ratio  = "FWD")
 
 # Plot
@@ -290,4 +309,33 @@ ggplot(plot_data, aes(x = Tenor, y = RMSE_Ratio, color = Model, group = Model)) 
     strip.text = element_text(size = 10, face = "bold")
   )
 ```
+
+```{r}
+ccy_name <- "USDSGD Curncy"
+fwd <- "12M"
+ovrd <- 12
+
+model_forecast <- forecasts_list[[fwd]][[ccy_name]]
+actual <- actuals_list[[fwd]][[ccy_name]]
+
+forecast_df <- complete_cases_vector_pairs(model_forecast, actual)
+subtract <- length(test_dates) - ovrd
+forecast_df$date <- test_dates[1:subtract]
+
+# time series plot
+ggplot(forecast_df, aes(x = date)) +
+  geom_line(aes(y = f, color = "Forecast"), size = 1) +
+  geom_line(aes(y = a, color = "Actual"), size = 1) +
+  labs(
+    title = paste("Forecast vs Actual for ", ccy_name, "-", fwd),
+    y = "Value",
+    x = "Date"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    strip.text = element_text(size = 10, face = "bold")
+  )
+```
+
 
