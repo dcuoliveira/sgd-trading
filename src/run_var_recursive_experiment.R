@@ -41,7 +41,7 @@ FWD_NAMES_MAPPINGS = c(
 INPUT_PATH = here('src', 'data', 'inputs')
 CCYS_FILE_NAME = 'daily-currencies-forwards.xlsx'
 TRAIN_END_DATE = '2008-01-01'
-MODEL_NAME <- 'rolling_ols'
+MODEL_NAME <- 'rolling_var'
 
 ## Load Data
 
@@ -152,61 +152,60 @@ for (i in seq_len(n_test)) {
   # compute log-prices
   current_data <- log(current_data)
   
-  # equations to be estimated
-  pred_ols <- list()
-  betas <- list()
+  # Estimate VAR model with selected lag
+  var_model <- tsDyn::lineVar(
+    data=current_data,
+    lag = 1,
+    include = "none",
+    model = "VAR"
+  )
+  
+  # Extract residuals and compute tag for each currency
   residuals <- list()
+  var_residuals <- residuals(var_model)
+  
   for (ccy in ccys_to_forecast) {
-    ols_model <- lm(
-      as.formula(paste0('`', ccy, ' Curncy` ~ . -1')),
-      data = current_data
-    )
-    
-    # residuals tag
-    tmp_scaled_residuals <- scale(ols_model$residuals)
-    if (tmp_scaled_residuals[length(tmp_scaled_residuals)] > 1){
-      tag <- tmp_scaled_residuals[length(tmp_scaled_residuals)]
-    }
-    else if(tmp_scaled_residuals[length(tmp_scaled_residuals)] < -1){
-      tag <- tmp_scaled_residuals[length(tmp_scaled_residuals)]
-    }
-    else{
+    tmp_scaled_residuals <- scale(var_residuals[, paste0(ccy, " Curncy")])
+    last_res <- tmp_scaled_residuals[nrow(tmp_scaled_residuals)]
+    if (last_res > 1) {
+      tag <- last_res
+    } else if (last_res < -1) {
+      tag <- last_res
+    } else {
       tag <- 0
     }
     tag_df <- as.data.table(tag)
     residuals[[ccy]] <- tag_df
-    
-    # betas
-    tmp_betas <- ols_model$coefficients
-    tmp_X <- current_data[nrow(current_data), ]
-    tmp_X[[ccy]] <- NULL
-    
-    betas_names <- gsub('`', '', names(tmp_betas))
-    tmp_X <- tmp_X[match(betas_names, names(tmp_X))]
-    
-    tmp_pred_ols_log <- sum(tmp_X * tmp_betas)
-    tmp_pred_ols <- exp(tmp_pred_ols_log)
-    
-    tmp_pred_ols <- data.frame(ccy = rep(tmp_pred_ols, h)) %>%
-      rename(!!paste0(ccy, ' Curncy') := ccy)
-    row.names(tmp_pred_ols) <- nrow(current_data) + seq(1, h)
-    
-    pred_ols[[ccy]] <- tmp_pred_ols %>% as.data.table()
-    betas[[ccy]] <- tmp_betas
-    if (ccy == 'USDSGD') {
-      betas_sgd[[i]] <- tmp_betas
-    }
   }
+  
   residuals_df <- do.call(cbind, residuals) %>% as.data.table()
   colnames(residuals_df) <- gsub('tag', '', paste0(ccys_to_forecast))
   residuals_list[[i]] <- residuals_df
+  
+  # Forecast h steps ahead using predict()
+  prediction <- predict(var_model, n.ahead = h)
+  
+  # Get the forecast values
+  pred_matrix <- prediction
+  
+  # Convert forecasts back from log to price domain
+  pred_matrix <- exp(pred_matrix)
+  
+  # Reorganize predictions into pred_ols format
+  pred_ols <- list()
+  for (j in seq_along(ccys_to_forecast)) {
+    ccy <- ccys_to_forecast[j]
+    tmp_pred <- data.frame(rep(pred_matrix[, j], h))
+    colnames(tmp_pred) <- paste0(ccy, ' Curncy')
+    pred_ols[[ccy]] <- tmp_pred %>% as.data.table()
+  }
   
   pred_ols <- do.call(cbind, pred_ols) %>% as.data.table()
   colnames(pred_ols) <- paste0(ccys_to_forecast, ' Curncy')
   for (fwd in FWD_NAMES) {
     horizon_idx <- FWD_NAMES_MAPPINGS[[fwd]]
     
-    # OLS forecast
+    # VAR forecast
     tmp_pred_ols <- pred_ols[horizon_idx, ] %>% select(all_of(paste0(ccys_to_forecast, " Curncy"))) %>% as.data.table()
     forecasts_list[[fwd]] <- rbind(forecasts_list[[fwd]], as.data.table(as.list(tmp_pred_ols)))
     
